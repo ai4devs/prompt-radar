@@ -1,0 +1,444 @@
+{
+  "name": "prompt-radar",
+  "displayName": "Prompt Radar",
+  "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, review findings on a radar, and export a session log.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "vanilson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ai4devs/prompt-smells.git",
+    "directory": "packages/vscode"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:promptRadar.prompts",
+    "onView:promptRadar.summary"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "promptRadar",
+          "title": "Prompt Radar",
+          "icon": "resources/icons/radar.svg"
+        }
+      ]
+    },
+    "views": {
+      "promptRadar": [
+        {
+          "id": "promptRadar.summary",
+          "name": "Workspace Summary",
+          "type": "webview"
+        },
+        {
+          "id": "promptRadar.prompts",
+          "name": "Detected Prompts"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "promptRadar.prompts",
+        "contents": "No prompts detected yet.\nScan your workspace to find prompt fragments (this runs locally — no LLM calls).\n[Scan Workspace](command:promptRadar.scanWorkspace)\nThen click a fragment to analyze it for prompt smells."
+      }
+    ],
+    "commands": [
+      {
+        "command": "promptRadar.analyzeSelection",
+        "title": "Prompt Radar: Analyze Selection"
+      },
+      {
+        "command": "promptRadar.scanWorkspace",
+        "title": "Prompt Radar: Scan Workspace",
+        "icon": "$(search)"
+      },
+      {
+        "command": "promptRadar.rescanCurrentFile",
+        "title": "Prompt Radar: Rescan Current File",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "promptRadar.analyzeAllDetected",
+        "title": "Prompt Radar: Analyze All Detected Prompts",
+        "icon": "$(play)"
+      },
+      {
+        "command": "promptRadar.openWorkspaceDashboard",
+        "title": "Prompt Radar: Open Workspace Dashboard"
+      },
+      {
+        "command": "promptRadar.exportSessionLog",
+        "title": "Prompt Radar: Export Session Log",
+        "icon": "$(export)"
+      },
+      {
+        "command": "promptRadar.clearAnalysis",
+        "title": "Prompt Radar: Clear Analysis Results (keep detected prompts)",
+        "icon": "$(history)"
+      },
+      {
+        "command": "promptRadar.clearWorkspace",
+        "title": "Prompt Radar: Clear Detected Prompts (keep analysis for re-scan)",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "promptRadar.clearSessionLog",
+        "title": "Prompt Radar: Clear Session Log",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "promptRadar.configureApiKey",
+        "title": "Prompt Radar: Configure API Key",
+        "icon": "$(key)"
+      },
+      {
+        "command": "promptRadar.openFragment",
+        "title": "Prompt Radar: Open Fragment"
+      },
+      {
+        "command": "promptRadar.removeFragment",
+        "title": "Prompt Radar: Remove Fragment",
+        "icon": "$(close)"
+      },
+      {
+        "command": "promptRadar.addFragmentFromSelection",
+        "title": "Prompt Radar: Add Selection as Fragment",
+        "icon": "$(add)"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "Provider",
+        "order": 1,
+        "properties": {
+          "promptRadar.provider": {
+            "type": "string",
+            "order": 1,
+            "enum": [
+              "vscodeLM",
+              "azureOpenAI"
+            ],
+            "enumDescriptions": [
+              "Use the VS Code Language Model API (Copilot etc.)",
+              "Use Azure OpenAI with your own key (BYOK)"
+            ],
+            "default": "azureOpenAI",
+            "markdownDescription": "Which LLM provider to use. `azureOpenAI` uses the endpoint/deployment below plus the API key set via **[Configure API Key](command:promptRadar.configureApiKey)**. `vscodeLM` uses the VS Code Language Model API (Copilot) instead."
+          }
+        }
+      },
+      {
+        "title": "Azure OpenAI (BYOK)",
+        "order": 2,
+        "properties": {
+          "promptRadar.azure.endpoint": {
+            "type": "string",
+            "order": 1,
+            "default": "https://60099-m1xc2jq0-australiaeast.openai.azure.com/",
+            "markdownDescription": "Azure OpenAI resource endpoint, e.g. `https://my-resource.openai.azure.com`.\n\n🔑 The API key is stored securely in VS Code Secret Storage (never in settings.json). Set or update it with **[Configure API Key](command:promptRadar.configureApiKey)**."
+          },
+          "promptRadar.azure.deployment": {
+            "type": "string",
+            "order": 2,
+            "default": "gpt-4o-vanilson",
+            "description": "Azure OpenAI deployment name."
+          },
+          "promptRadar.azure.apiVersion": {
+            "type": "string",
+            "order": 3,
+            "default": "2024-12-01-preview",
+            "description": "Azure OpenAI API version."
+          }
+        }
+      },
+      {
+        "title": "VS Code Language Model (fallback)",
+        "order": 3,
+        "properties": {
+          "promptRadar.model": {
+            "type": "string",
+            "default": "",
+            "enum": [
+              "",
+              "claude-sonnet-4.6",
+              "claude-sonnet-4.5",
+              "claude-opus-4.6",
+              "claude-haiku-4.5",
+              "gpt-4.1",
+              "gpt-5.4",
+              "gpt-5-mini",
+              "gpt-4o-mini",
+              "gemini-2.5-pro",
+              "gemini-3.1-pro-preview",
+              "gemini-3-flash"
+            ],
+            "enumDescriptions": [
+              "Use the first model returned by VS Code",
+              "Claude Sonnet 4.6",
+              "Claude Sonnet 4.5",
+              "Claude Opus 4.6",
+              "Claude Haiku 4.5",
+              "GPT-4.1",
+              "GPT-5.4",
+              "GPT-5 mini",
+              "GPT-4o mini",
+              "Gemini 2.5 Pro",
+              "Gemini 3.1 Pro (Preview)",
+              "Gemini 3 Flash (Preview)"
+            ],
+            "markdownDescription": "Model family for the **`vscodeLM`** provider (used only when `promptRadar.provider` is `vscodeLM`). If the family is not available it falls back to any installed model. Any family name from the **Prompt Radar** output channel can be typed directly in `settings.json`."
+          }
+        }
+      },
+      {
+        "title": "Analysis",
+        "order": 4,
+        "properties": {
+          "promptRadar.temperature": {
+            "type": "number",
+            "order": 1,
+            "default": 0,
+            "description": "Sampling temperature for the detector. Keep at 0 for reproducibility."
+          },
+          "promptRadar.timeoutMs": {
+            "type": "number",
+            "order": 2,
+            "default": 60000,
+            "description": "Per-request LLM timeout in milliseconds."
+          },
+          "promptRadar.maxConcurrent": {
+            "type": "number",
+            "order": 3,
+            "default": 2,
+            "description": "Maximum number of fragments analyzed concurrently during batch analysis."
+          },
+          "promptRadar.catalog": {
+            "type": "string",
+            "order": 4,
+            "default": "v1.0",
+            "description": "Bundled smell catalog version to use."
+          }
+        }
+      },
+      {
+        "title": "Scanning",
+        "order": 5,
+        "properties": {
+          "promptRadar.scan.languages": {
+            "type": "array",
+            "order": 1,
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "python",
+              "typescript",
+              "javascript"
+            ],
+            "description": "Languages the scanner extracts fragments from."
+          },
+          "promptRadar.scan.exclude": {
+            "type": "array",
+            "order": 2,
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "**/node_modules/**",
+              "**/dist/**",
+              "**/.venv/**",
+              "**/__pycache__/**"
+            ],
+            "description": "Extra glob patterns to exclude from scanning. Build/generated directories and .gitignore are always excluded too."
+          },
+          "promptRadar.scan.minConfidence": {
+            "type": "number",
+            "order": 3,
+            "default": 0.6,
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Minimum detection confidence (0–1) for a fragment to be kept. Higher = fewer false positives."
+          },
+          "promptRadar.scan.codeScope": {
+            "type": "string",
+            "order": 4,
+            "enum": [
+              "auto",
+              "file",
+              "fragments"
+            ],
+            "enumDescriptions": [
+              "Smart: whole file when it has a single prompt; one unit per enclosing function when it has several. The LLM extracts the actual prompt.",
+              "Always send the whole source file (one radar per file, full context).",
+              "One fragment per detected prompt string (granular; may split multi-part prompts)."
+            ],
+            "default": "auto",
+            "markdownDescription": "How prompts embedded in **source code** are grouped before analysis. Standalone prompt files are always analyzed whole. `auto` is recommended."
+          }
+        }
+      },
+      {
+        "title": "Inline Hints",
+        "order": 6,
+        "properties": {
+          "promptRadar.inline.diagnostics": {
+            "type": "boolean",
+            "order": 1,
+            "default": true,
+            "description": "Show detected smells as inline diagnostics (squiggles) in analyzed files."
+          },
+          "promptRadar.inline.hover": {
+            "type": "boolean",
+            "order": 2,
+            "default": true,
+            "description": "Show smell details on hover within analyzed fragments."
+          }
+        }
+      },
+      {
+        "title": "Research",
+        "order": 7,
+        "properties": {
+          "promptRadar.research.consent": {
+            "type": "boolean",
+            "order": 1,
+            "default": false,
+            "description": "When off, exports are anonymized (pseudonym and identifying fields omitted)."
+          },
+          "promptRadar.session.pseudonym": {
+            "type": "string",
+            "order": 2,
+            "default": "",
+            "description": "Pseudonym written to the export when research consent is on."
+          }
+        }
+      },
+      {
+        "title": "Logging",
+        "order": 8,
+        "properties": {
+          "promptRadar.log.verbose": {
+            "type": "boolean",
+            "default": false,
+            "description": "Log per-file/per-fragment detail to the Prompt Radar output channel."
+          }
+        }
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "promptRadar.scanWorkspace",
+          "when": "view == promptRadar.prompts",
+          "group": "navigation@1"
+        },
+        {
+          "command": "promptRadar.rescanCurrentFile",
+          "when": "view == promptRadar.prompts",
+          "group": "navigation@2"
+        },
+        {
+          "command": "promptRadar.analyzeAllDetected",
+          "when": "view == promptRadar.prompts",
+          "group": "navigation@3"
+        },
+        {
+          "command": "promptRadar.exportSessionLog",
+          "when": "view == promptRadar.prompts",
+          "group": "navigation@4"
+        },
+        {
+          "command": "promptRadar.configureApiKey",
+          "when": "view == promptRadar.prompts",
+          "group": "1_config@1"
+        },
+        {
+          "command": "promptRadar.clearAnalysis",
+          "when": "view == promptRadar.prompts",
+          "group": "1_config@2"
+        },
+        {
+          "command": "promptRadar.clearWorkspace",
+          "when": "view == promptRadar.prompts",
+          "group": "1_config@3"
+        },
+        {
+          "command": "promptRadar.clearSessionLog",
+          "when": "view == promptRadar.prompts",
+          "group": "1_config@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "promptRadar.removeFragment",
+          "when": "view == promptRadar.prompts && viewItem == promptRadar.fragment",
+          "group": "inline"
+        },
+        {
+          "command": "promptRadar.removeFragment",
+          "when": "view == promptRadar.prompts && viewItem == promptRadar.fragment",
+          "group": "9_modify"
+        },
+        {
+          "command": "promptRadar.removeFragment",
+          "when": "view == promptRadar.prompts && viewItem == promptRadar.file",
+          "group": "9_modify"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "promptRadar.analyzeSelection",
+          "when": "editorHasSelection",
+          "group": "1_modification"
+        },
+        {
+          "command": "promptRadar.addFragmentFromSelection",
+          "when": "editorHasSelection",
+          "group": "1_modification"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "promptRadar.openFragment",
+          "when": "false"
+        },
+        {
+          "command": "promptRadar.removeFragment",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build -- --production",
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc --noEmit",
+    "lint": "eslint src",
+    "test:unit": "esbuild $(find src -name '*.test.ts') --bundle --platform=node --format=cjs --outdir=dist/test --external:vscode && node --test \"dist/test/**/*.js\"",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.2.0",
+    "chart.js": "^4.5.1",
+    "esbuild": "^0.24.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.19.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

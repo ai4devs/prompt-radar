@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "smells": [
+    { "id": "formatting.no_output_contract", "name": "No output format specified", "signal": "the prompt asks for output but does not state length, structure, or format", "typical_severity": "minor–moderate" },
+    { "id": "formatting.monolithic_prompt", "name": "Monolithic mixed-concerns prompt", "signal": "one prompt instructs multiple distinct tasks (classify + summarize + translate)", "typical_severity": "moderate" },
+    { "id": "formatting.duplicated_instructions", "name": "Duplicated instructions", "signal": "the same instruction is restated in multiple places", "typical_severity": "minor" },
+    { "id": "formatting.magic_values", "name": "Hardcoded magic values", "signal": "hardcoded numbers/strings that should be parameters", "typical_severity": "minor–moderate" },
+    { "id": "formatting.missing_section_delimiters", "name": "Missing internal section delimiters", "signal": "no clear boundaries between system instructions, examples, output spec", "typical_severity": "minor" },
+
+    { "id": "reliability.forced_answer", "name": "Forced answer encourages fabrication", "signal": "prompt requires an answer regardless of evidence", "typical_severity": "moderate–major" },
+    { "id": "reliability.ungrounded_factual", "name": "Ungrounded factual task", "signal": "factual task with no source, retrieval, or grounding context", "typical_severity": "moderate" },
+    { "id": "reliability.ambiguous_instruction", "name": "Ambiguous instruction", "signal": "key task term or output expectation is vague", "typical_severity": "minor–moderate" },
+    { "id": "reliability.contradictory_instructions", "name": "Contradictory instructions", "signal": "two parts conflict (e.g., \"be concise\" + \"include all details\")", "typical_severity": "moderate–major" },
+    { "id": "reliability.underspecified_task", "name": "Underspecified task", "signal": "essential parameters missing", "typical_severity": "minor–moderate" },
+    { "id": "reliability.brittle_phrasing_match", "name": "Brittle phrasing reliance", "signal": "branches on exact phrasing without handling variants", "typical_severity": "minor" },
+    { "id": "reliability.unhandled_empty_input", "name": "Unhandled empty/edge input", "signal": "assumes non-empty or well-formed input", "typical_severity": "moderate" },
+    { "id": "reliability.single_edge_case_example", "name": "Single edge-case exemplar", "signal": "only few-shot is an unusual case", "typical_severity": "minor" },
+    { "id": "reliability.missing_examples", "name": "Missing examples for non-standard task", "signal": "unusual task presented zero-shot", "typical_severity": "moderate" },
+
+    { "id": "efficiency.irrelevant_context", "name": "Irrelevant context inflation", "signal": "large context not needed for the task", "typical_severity": "moderate" },
+    { "id": "efficiency.oversized_few_shot", "name": "Oversized few-shot set", "signal": "many more examples than required", "typical_severity": "minor–moderate" },
+    { "id": "efficiency.uncached_static_context", "name": "Uncached static context", "signal": "large unchanging context resent on every call", "typical_severity": "moderate" },
+    { "id": "efficiency.filler_verbosity", "name": "Filler verbosity", "signal": "politeness/meta phrases that add tokens without effect", "typical_severity": "minor" },
+    { "id": "efficiency.redundant_default_instructions", "name": "Redundant default-behavior instructions", "signal": "instructions repeating default behavior", "typical_severity": "minor" },
+
+    { "id": "security.unsanitized_input_concat", "name": "Unsanitized user-input concatenation", "signal": "user input interpolated directly without sanitization", "typical_severity": "major" },
+    { "id": "security.missing_data_delimiting", "name": "Missing instruction/data delimiting", "signal": "user content not separated from instructions", "typical_severity": "major" },
+    { "id": "security.instruction_override_exposure", "name": "Instruction-override exposure", "signal": "prompt grants user instructions priority", "typical_severity": "major" },
+    { "id": "security.embedded_secret", "name": "Embedded secret", "signal": "API key, credential, internal URL, or token in prompt text", "typical_severity": "critical" },
+    { "id": "security.embedded_pii", "name": "Embedded PII", "signal": "personally identifiable info in prompt text or examples", "typical_severity": "major" },
+    { "id": "security.over_trusted_output", "name": "Over-trusted model output", "signal": "code uses model output (SQL, code, URLs) without validation", "typical_severity": "major" },
+
+    { "id": "safety.missing_refusal_guardrails", "name": "Missing refusal guardrails", "signal": "domain needs refusal/escalation but none specified", "typical_severity": "moderate–major" },
+    { "id": "safety.jailbreak_susceptible_framing", "name": "Jailbreak-susceptible framing", "signal": "phrases broadly suppressing safety", "typical_severity": "major" },
+    { "id": "safety.absent_content_boundaries", "name": "Absent content boundaries", "signal": "consumer-facing deployment without scope limits", "typical_severity": "moderate" },
+    { "id": "safety.no_escalation_path", "name": "No escalation path for sensitive content", "signal": "no redirect for self-harm/violence content where invited", "typical_severity": "moderate" }
+  ]
+}
