@@ -4,11 +4,11 @@
 
 ## Repository structure
 
-| Folder | Contents |
-|--------|----------|
+| Path | Contents |
+|------|----------|
 | `/docs` | Landing page — published via GitHub Pages |
-| `/src`  | Extension source code (TypeScript) |
-| `package.json` | Extension manifest and dependencies |
+| `/packages/vscode` | Extension source code (TypeScript) |
+| `/packages/vscode/package.json` | Extension manifest and dependencies |
 
 ## Website
 
@@ -27,6 +27,7 @@
 ## Development
 
 ```bash
+cd packages/vscode
 npm install
 npm run compile
 ```
