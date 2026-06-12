@@ -9,6 +9,7 @@
 
 import * as path from "node:path";
 import { Language, Parser } from "@vscode/tree-sitter-wasm";
+import { errorMessage } from "../../util/errors";
 
 export type AstLangId =
   | "python"
@@ -40,10 +41,6 @@ export interface AstRuntime {
   dispose(): void;
 }
 
-function msg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 // One runtime per process. Parser.init() is global emscripten state, so it must
 // run exactly once; grammars are loaded lazily and cached (null = tried+failed,
 // so we don't retry a broken grammar on every scan).
@@ -69,7 +66,7 @@ class SharedRuntime implements AstRuntime {
         this.handles.set(id, { parser, language });
       } catch (err) {
         this.handles.set(id, null);
-        this.log(`tree-sitter: grammar '${id}' failed to load: ${msg(err)}`);
+        this.log(`tree-sitter: grammar '${id}' failed to load: ${errorMessage(err)}`);
       }
     }
   }
@@ -109,7 +106,7 @@ export async function getSharedRuntime(
   } catch (err) {
     parserInit = undefined; // allow a later retry (e.g. a fixed install)
     log(
-      `tree-sitter: runtime unavailable, using heuristic extractor: ${msg(err)}`
+      `tree-sitter: runtime unavailable, using heuristic extractor: ${errorMessage(err)}`
     );
     return undefined;
   }

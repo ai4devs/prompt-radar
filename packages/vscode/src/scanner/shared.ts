@@ -43,6 +43,44 @@ export const CONF = {
   youAre: 0.7,
 } as const;
 
+// ── shared prompt vocabulary (one source of truth for both paths) ────────────
+
+// Names that mark a binding / object key as prompt-ish.
+export const PROMPT_WORD = "prompt|template|system|instruction|messages?|msg|sys";
+export const PROMPT_WORD_RE = new RegExp(`(?:${PROMPT_WORD})`, "i");
+
+// Callee-text fragments that identify a known LLM call. The AST path matches
+// these against a call node's function-expression text; the heuristic path
+// appends "\\s*\\(" to each to find call sites in raw source. Add a new SDK in
+// ONE place and both extractors pick it up.
+export const LLM_CALLEES: readonly string[] = [
+  "\\.chat\\.completions\\.create",
+  "\\.messages\\.create",
+  "\\.completions\\.create",
+  "\\.responses\\.create",
+  "ChatCompletion\\.create",
+  "litellm\\.a?completion",
+  "(?:Chat)?PromptTemplate",
+  "\\.from_template",
+  "\\.from_messages",
+  "(?:System|Human|User|AI)Message(?:PromptTemplate)?",
+  "InvokePromptAsync",
+  "CreateFunctionFromPrompt",
+  "CreateFromPrompt",
+  "\\.Add(?:System|User|Assistant)Message",
+  "(?:System|User|Assistant)ChatMessage",
+  "ChatRequest(?:System|User|Assistant)Message",
+];
+
+// AST path: a string that is the direct argument of one of these calls is a
+// prompt. The fluent builder methods (.prompt/.system/.user) are trusted here
+// because the AST already knows the string is that call's argument; in raw
+// source those names are too generic, so the heuristic anchors on a string arg
+// instead (see extractor.ts).
+export const KNOWN_CALL_RE = new RegExp(
+  `(?:${[...LLM_CALLEES, "\\.(?:prompt|system|user)\\b"].join("|")})`
+);
+
 // ── offset → line ────────────────────────────────────────────────────────────
 
 export function lineStarts(content: string): number[] {

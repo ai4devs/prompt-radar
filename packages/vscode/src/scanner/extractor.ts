@@ -16,8 +16,10 @@ import {
   lineEndOffset,
   lineOf,
   lineStarts,
+  LLM_CALLEES,
   looksLikeNaturalLanguage,
   MAX_FRAGMENTS_PER_FILE,
+  PROMPT_WORD,
   type RawFragment,
   regionUnit,
   unit,
@@ -64,25 +66,12 @@ function isIdentChar(c: string | undefined): boolean {
 
 // ── specific LLM call sites ──────────────────────────────────────────────────
 
+// Each shared callee with a trailing "(" finds it as a call in raw source, plus
+// one heuristic-only pattern: the fluent builders (.prompt/.system/.user) are
+// too generic on their own, so they only count when the argument is a string.
 const CALL_SITE_PATTERNS: RegExp[] = [
-  /\.chat\.completions\.create\s*\(/g,
-  /\.messages\.create\s*\(/g,
-  /\.completions\.create\s*\(/g,
-  /\.responses\.create\s*\(/g,
-  /\bChatCompletion\.create\s*\(/g,
-  /\blitellm\.a?completion\s*\(/g,
-  /\b(Chat)?PromptTemplate\s*[.(]/g,
-  /\.from_template\s*\(/g,
-  /\.from_messages\s*\(/g,
-  /\b(System|Human|User|AI)Message(PromptTemplate)?\s*[.(]/g,
-  // Java — Spring AI fluent client + LangChain4j; anchored on a string/text-block arg.
-  /\.(prompt|system|user)\s*\(\s*"/g,
-  /\b@(System|User)Message\s*\(/g,
-  // C# — Semantic Kernel + chat history.
-  /\b(CreateFunctionFromPrompt|InvokePromptAsync|CreateFromPrompt)\s*\(/g,
-  /\.Add(System|User|Assistant)Message\s*\(/g,
-  /\bnew\s+(System|User|Assistant)ChatMessage\s*\(/g,
-  /\bnew\s+ChatRequest(System|User|Assistant)Message\s*\(/g,
+  ...LLM_CALLEES.map((callee) => new RegExp(`${callee}\\s*\\(`, "g")),
+  /\.(?:prompt|system|user)\s*\(\s*"/g,
 ];
 
 function findCallSiteLines(content: string, starts: number[]): Set<number> {
@@ -322,8 +311,10 @@ function readCsString(content: string, start: number): StringTok | undefined {
 // property / field with type), so JS/TS `{ systemPrompt: "…" }` and `prompt =`
 // both match; trailing `\(?` allows parenthesized / implicitly-concatenated
 // values like `system = (\n  "You are…"`.
-const PROMPT_NAME_RE =
-  /\b[\w$]*(prompt|template|system|instruction|messages?|msg|sys)[\w$]*\s*(?::\s*[\w$<>[\]. |]+)?\s*[:=]\s*\(?\s*$/i;
+const PROMPT_NAME_RE = new RegExp(
+  `\\b[\\w$]*(?:${PROMPT_WORD})[\\w$]*\\s*(?::\\s*[\\w$<>[\\]. |]+)?\\s*[:=]\\s*\\(?\\s*$`,
+  "i"
+);
 
 function confidenceFor(
   content: string,

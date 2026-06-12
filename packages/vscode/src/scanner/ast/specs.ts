@@ -14,8 +14,10 @@ export interface StringSpan {
 
 export interface LanguageSpec {
   id: AstLangId;
-  /** If `node` is a string literal we should consider, its inner span; else undefined. */
-  asString(node: Node): StringSpan | undefined;
+  /** If `node` is a string literal we should consider, its inner span; else undefined.
+   *  `content` is the full source, so prefixes/delimiters can be inspected by
+   *  index without copying the node's text across the WASM boundary. */
+  asString(node: Node, content: string): StringSpan | undefined;
   /** Wrapper node types climbed through to find a string's real value context. */
   wrapperTypes: ReadonlySet<string>;
   /** Object/dict key under which `value` sits (any key), or undefined. */
@@ -229,9 +231,9 @@ function declaratorName(value: Node, declType: string): string | undefined {
 const javaSpec: LanguageSpec = {
   id: "java",
   wrapperTypes: JAVA_WRAPPERS,
-  asString(node) {
+  asString(node, content) {
     if (node.type !== "string_literal") return undefined;
-    const triple = node.text.startsWith('"""'); // text block
+    const triple = content.startsWith('"""', node.startIndex); // text block
     const pad = triple ? 3 : 1;
     return { innerStart: node.startIndex + pad, innerEnd: node.endIndex - pad };
   },
@@ -288,14 +290,14 @@ const CS_UNIT_TYPES = new Set([
 const csharpSpec: LanguageSpec = {
   id: "csharp",
   wrapperTypes: CS_WRAPPERS,
-  asString(node) {
+  asString(node, content) {
     if (!CS_STRING_TYPES.has(node.type)) return undefined;
-    // Skip any `$` / `@` prefixes, then detect a `"""` raw/triple delimiter.
-    const t = node.text;
-    let i = 0;
-    while (t[i] === "$" || t[i] === "@") i++;
-    const triple = t.startsWith('"""', i);
-    const lead = i + (triple ? 3 : 1);
+    // Skip any `$` / `@` prefixes, then detect a `"""` raw/triple delimiter —
+    // all by index into `content`, without copying node.text.
+    let i = node.startIndex;
+    while (content[i] === "$" || content[i] === "@") i++;
+    const triple = content.startsWith('"""', i);
+    const lead = i - node.startIndex + (triple ? 3 : 1);
     const tail = triple ? 3 : 1;
     return { innerStart: node.startIndex + lead, innerEnd: node.endIndex - tail };
   },

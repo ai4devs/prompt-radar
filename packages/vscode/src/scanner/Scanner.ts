@@ -35,6 +35,10 @@ const LANGUAGE_AST: Record<string, AstLangId[]> = {
   csharp: ["csharp"],
 };
 
+// Fallback used only if the package.json-declared default is somehow absent;
+// kept in sync with package.json so both scan entry points agree.
+const DEFAULT_LANGUAGES = Object.keys(LANGUAGE_EXTS);
+
 // Always excluded (generated/build/vendor output), unioned with user excludes +
 // .gitignore so clearing the setting can't reintroduce build noise.
 const BASE_EXCLUDES = [
@@ -96,11 +100,7 @@ export class Scanner {
     const startedMs = Date.now();
 
     const cfg = vscode.workspace.getConfiguration("promptRadar");
-    const languages = cfg.get<string[]>("scan.languages", [
-      "python",
-      "typescript",
-      "javascript",
-    ]);
+    const languages = cfg.get<string[]>("scan.languages", DEFAULT_LANGUAGES);
     const minConfidence = cfg.get<number>("scan.minConfidence", 0.6);
     const codeScope = cfg.get<CodeScope>("scan.codeScope", "auto");
     const userExcludes = cfg.get<string[]>("scan.exclude", []);
@@ -192,7 +192,7 @@ export class Scanner {
     const cfg = vscode.workspace.getConfiguration("promptRadar");
     const minConfidence = cfg.get<number>("scan.minConfidence", 0.6);
     const codeScope = cfg.get<CodeScope>("scan.codeScope", "auto");
-    const languages = cfg.get<string[]>("scan.languages", []);
+    const languages = cfg.get<string[]>("scan.languages", DEFAULT_LANGUAGES);
     const runtime = await this.resolveRuntime(languages);
     const result = await this.scanUri(uri, rel, minConfidence, codeScope, runtime);
     return result?.fragments ?? [];

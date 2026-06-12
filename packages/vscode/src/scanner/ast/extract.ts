@@ -7,7 +7,9 @@
 import type { Node } from "@vscode/tree-sitter-wasm";
 import {
   CONF,
+  KNOWN_CALL_RE,
   type Lang,
+  PROMPT_WORD_RE,
   type RawFragment,
   lineOf,
   lineStarts,
@@ -19,15 +21,10 @@ import { climb, type LanguageSpec } from "./specs";
 import { groupAstHits, type UnitHit } from "./grouping";
 import type { AstLangId, ParserHandle } from "./runtime";
 
-// Names (binding / object key) that mark a value as prompt-ish.
-const PROMPT_WORD_RE = /(?:prompt|template|system|instruction|messages?|msg|sys)/i;
 // JSX attribute names that carry a prompt.
 const PROMPT_ATTR_RE = /(?:prompt|system|instruction)/i;
 // Java/C# annotation/attribute names whose string argument IS a prompt.
 const PROMPT_ANNOTATION_RE = /(?:system|user|assistant)message/i;
-// Function-expression text of a known LLM call whose direct string arg is a prompt.
-const KNOWN_CALL_RE =
-  /(?:\.chat\.completions\.create|\.messages\.create|\.completions\.create|\.responses\.create|ChatCompletion\.create|litellm\.a?completion|(?:Chat)?PromptTemplate|\.from_template|\.from_messages|(?:System|Human|User|AI)Message|InvokePromptAsync|Create(?:FunctionF|f)romPrompt|\.Add(?:System|User|Assistant)Message|(?:System|User|Assistant)ChatMessage|ChatRequest(?:System|User|Assistant)Message|\.(?:prompt|system|user)\b)/;
 
 export interface AstExtractOptions {
   minConfidence: number;
@@ -66,7 +63,7 @@ function collect(
     const stack: Node[] = [tree.rootNode];
     while (stack.length > 0) {
       const node = stack.pop()!;
-      const span = spec.asString(node);
+      const span = spec.asString(node, content);
       if (span) {
         const text = content.slice(span.innerStart, span.innerEnd);
         if (looksLikeNaturalLanguage(text)) {
