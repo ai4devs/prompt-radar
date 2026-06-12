@@ -2,7 +2,10 @@ import * as vscode from "vscode";
 import { Detector, DetectorError } from "./detector/Detector";
 import { analyzeFragments } from "./detector/batch";
 import type { DetectorJSON } from "./detector/schema";
-import { exportSessionLog } from "./export/exportSession";
+import {
+  FeedbackUploader,
+  maybePromptTelemetryOptIn,
+} from "./telemetry/FeedbackUploader";
 import { ProviderError, bannerActionForKind } from "./llm/LLMProvider";
 import { createProvider, readLlmOptions } from "./llm/providerFactory";
 import { configureApiKey } from "./llm/apiKey";
@@ -26,6 +29,7 @@ const SETTINGS_QUERY = "@ext:vanilson.prompt-radar";
 let promptIndex: PromptIndexStore | undefined;
 let responseLog: ResponseLogStore | undefined;
 let summaryProvider: SummaryViewProvider | undefined;
+let feedbackUploader: FeedbackUploader | undefined;
 
 // Fragment ids with an analysis currently in flight — guards against double
 // clicks / concurrent triggers starting duplicate LLM calls for one fragment.
@@ -48,12 +52,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   summaryProvider = summary;
   const tree = new PromptsTreeDataProvider(index, responses);
   const radar = new RadarPanel(context.extensionUri, index, responses, logger);
+  const uploader = new FeedbackUploader(
+    index,
+    responses,
+    context.extension.packageJSON.version ?? "0.1.0",
+    context.workspaceState,
+    logger
+  );
+  feedbackUploader = uploader;
 
   context.subscriptions.push(
     outputChannel,
     index,
     responses,
     inline,
+    uploader,
     summary,
     tree,
     radar,
@@ -158,16 +171,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     vscode.commands.registerCommand("promptRadar.analyzeAllDetected", () =>
       analyzeAllDetected(context, logger, index)
-    ),
-
-    vscode.commands.registerCommand("promptRadar.exportSessionLog", () =>
-      exportSessionLog(
-        index,
-        responses,
-        context.extension.packageJSON.version ?? "0.1.0"
-      )
     )
   );
+
+  void maybePromptTelemetryOptIn(context);
 
   logger.info(
     `Prompt Radar activated · session=${responses.sessionId} · ${index.all().length} fragment(s) in index.`
@@ -175,7 +182,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
-  await Promise.all([promptIndex?.flush(), responseLog?.flush()]);
+  await Promise.all([
+    promptIndex?.flush(),
+    responseLog?.flush(),
+    feedbackUploader?.flush(),
+  ]);
 }
 
 async function analyzeAllDetected(
@@ -202,6 +213,26 @@ async function analyzeAllDetected(
   }
   logger.revealOnce();
   logger.info(`Batch analysis started · ${pending.length} fragment(s).`);
+  // Claim the whole batch so a tree click on a pending fragment while the batch
+  // runs doesn't start a duplicate analysis for it.
+  for (const fragment of pending) {
+    fragmentsInFlight.add(fragment.id);
+  }
+  try {
+    await runBatch(context, logger, index, pending);
+  } finally {
+    for (const fragment of pending) {
+      fragmentsInFlight.delete(fragment.id);
+    }
+  }
+}
+
+async function runBatch(
+  context: vscode.ExtensionContext,
+  logger: Logger,
+  index: PromptIndexStore,
+  pending: Fragment[]
+): Promise<void> {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -281,7 +312,12 @@ async function analyzeSelection(
       token.onCancellationRequested(() => controller.abort());
 
       try {
-        const result = await runDetector(context, logger, text, controller.signal);
+        const { result, model } = await runDetector(
+          context,
+          logger,
+          text,
+          controller.signal
+        );
 
         const file = vscode.workspace.asRelativePath(editor.document.uri, false);
         const startOffset = editor.document.offsetAt(selection.start);
@@ -301,6 +337,7 @@ async function analyzeSelection(
           artifactTextSha256: sha256(text),
           confidence: 1,
           toolOutput: result,
+          model,
           scannedAt: now,
           analyzedAt: now,
         };
@@ -488,7 +525,7 @@ async function analyzeFragment(
       const controller = new AbortController();
       token.onCancellationRequested(() => controller.abort());
       try {
-        const result = await runDetector(
+        const { result, model } = await runDetector(
           context,
           logger,
           fragment.artifactText,
@@ -498,6 +535,7 @@ async function analyzeFragment(
           ...fragment,
           artifactType: result.artifact_type,
           toolOutput: result,
+          model,
           analyzedAt: new Date().toISOString(),
           failed: false,
         });
@@ -530,6 +568,7 @@ function mergeAnalysis(index: PromptIndexStore, fresh: Fragment[]): Fragment[] {
       return {
         ...fragment,
         toolOutput: existing.toolOutput,
+        model: existing.model,
         analyzedAt: existing.analyzedAt,
         failed: existing.failed,
       };
@@ -544,6 +583,7 @@ function mergeAnalysis(index: PromptIndexStore, fresh: Fragment[]): Fragment[] {
       return {
         ...fragment,
         toolOutput: cached.toolOutput,
+        model: cached.model,
         analyzedAt: cached.analyzedAt,
       };
     }
@@ -556,7 +596,7 @@ async function runDetector(
   logger: Logger,
   artifact: string,
   signal: AbortSignal
-): Promise<DetectorJSON> {
+): Promise<{ result: DetectorJSON; model?: string }> {
   const provider = await createProvider(context.secrets, logger);
   const detector = new Detector(
     context.extensionUri,
@@ -564,7 +604,8 @@ async function runDetector(
     logger,
     readLlmOptions()
   );
-  return detector.analyze(artifact, signal);
+  const result = await detector.analyze(artifact, signal);
+  return { result, model: detector.model };
 }
 
 async function reportError(err: unknown, logger: Logger): Promise<void> {

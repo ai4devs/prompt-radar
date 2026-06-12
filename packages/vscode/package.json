@@ -1,14 +1,14 @@
 {
   "name": "prompt-radar",
   "displayName": "Prompt Radar",
-  "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, review findings on a radar, and export a session log.",
+  "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, and review the findings on an interactive radar.",
   "version": "0.1.0",
   "private": true,
   "publisher": "vanilson",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ai4devs/prompt-smells.git",
+    "url": "https://github.com/ai4devs/prompt-radar.git",
     "directory": "packages/vscode"
   },
   "engines": {
@@ -77,11 +77,6 @@
         "title": "Prompt Radar: Open Workspace Dashboard"
       },
       {
-        "command": "promptRadar.exportSessionLog",
-        "title": "Prompt Radar: Export Session Log",
-        "icon": "$(export)"
-      },
-      {
         "command": "promptRadar.clearAnalysis",
         "title": "Prompt Radar: Clear Analysis Results (keep detected prompts)",
         "icon": "$(history)"
@@ -132,8 +127,8 @@
               "Use the VS Code Language Model API (Copilot etc.)",
               "Use Azure OpenAI with your own key (BYOK)"
             ],
-            "default": "azureOpenAI",
-            "markdownDescription": "Which LLM provider to use. `azureOpenAI` uses the endpoint/deployment below plus the API key set via **[Configure API Key](command:promptRadar.configureApiKey)**. `vscodeLM` uses the VS Code Language Model API (Copilot) instead."
+            "default": "vscodeLM",
+            "markdownDescription": "Which LLM provider to use. `vscodeLM` uses the VS Code Language Model API (Copilot). `azureOpenAI` uses the endpoint/deployment below plus the API key set via **[Configure API Key](command:promptRadar.configureApiKey)**."
           }
         }
       },
@@ -144,13 +139,13 @@
           "promptRadar.azure.endpoint": {
             "type": "string",
             "order": 1,
-            "default": "https://60099-m1xc2jq0-australiaeast.openai.azure.com/",
+            "default": "",
             "markdownDescription": "Azure OpenAI resource endpoint, e.g. `https://my-resource.openai.azure.com`.\n\n🔑 The API key is stored securely in VS Code Secret Storage (never in settings.json). Set or update it with **[Configure API Key](command:promptRadar.configureApiKey)**."
           },
           "promptRadar.azure.deployment": {
             "type": "string",
             "order": 2,
-            "default": "gpt-4o-vanilson",
+            "default": "",
             "description": "Azure OpenAI deployment name."
           },
           "promptRadar.azure.apiVersion": {
@@ -221,12 +216,6 @@
             "order": 3,
             "default": 2,
             "description": "Maximum number of fragments analyzed concurrently during batch analysis."
-          },
-          "promptRadar.catalog": {
-            "type": "string",
-            "order": 4,
-            "default": "v1.0",
-            "description": "Bundled smell catalog version to use."
           }
         }
       },
@@ -306,20 +295,13 @@
         }
       },
       {
-        "title": "Research",
+        "title": "Telemetry",
         "order": 7,
         "properties": {
-          "promptRadar.research.consent": {
+          "promptRadar.telemetry.enabled": {
             "type": "boolean",
-            "order": 1,
             "default": false,
-            "description": "When off, exports are anonymized (pseudonym and identifying fields omitted)."
-          },
-          "promptRadar.session.pseudonym": {
-            "type": "string",
-            "order": 2,
-            "default": "",
-            "description": "Pseudonym written to the export when research consent is on."
+            "markdownDescription": "Share anonymized feedback to help improve the smell catalog and detector. When on, each time you respond to a detected smell (agree/disagree/unsure, with any comment) or add a missed smell, that feedback is uploaded together with the analyzed prompt text, the detected smells, the model used, and an anonymous machine id — never API keys or other workspace content. Off by default, and always disabled when VS Code telemetry (`telemetry.telemetryLevel`) is off."
           }
         }
       },
@@ -351,11 +333,6 @@
           "command": "promptRadar.analyzeAllDetected",
           "when": "view == promptRadar.prompts",
           "group": "navigation@3"
-        },
-        {
-          "command": "promptRadar.exportSessionLog",
-          "when": "view == promptRadar.prompts",
-          "group": "navigation@4"
         },
         {
           "command": "promptRadar.configureApiKey",

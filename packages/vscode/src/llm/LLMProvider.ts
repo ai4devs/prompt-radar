@@ -11,6 +11,10 @@ export interface CompleteOptions {
 export interface LLMProvider {
   /** Stable identifier for logging: "azureOpenAI". */
   readonly name: string;
+  /** Best-effort identifier of the concrete model serving completions, e.g.
+   *  "azure/gpt-4o-deploy" or "copilot/gpt-4o". For vscodeLM this is only
+   *  known after the first completion. */
+  readonly model?: string;
   complete(prompt: string, options: CompleteOptions): Promise<string>;
 }
 

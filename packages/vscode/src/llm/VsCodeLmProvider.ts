@@ -13,14 +13,20 @@ import { errorMessage } from "../util/errors";
 // configured family string often doesn't match the host's catalog.
 export class VsCodeLmProvider implements LLMProvider {
   readonly name = "vscodeLM";
+  private lastModel: string | undefined;
 
   constructor(
     private readonly logger: Logger,
     private readonly preferredFamily: string
   ) {}
 
+  get model(): string | undefined {
+    return this.lastModel;
+  }
+
   async complete(prompt: string, options: CompleteOptions): Promise<string> {
     const model = await this.pickModel();
+    this.lastModel = `${model.vendor}/${model.id}`;
 
     const cts = new vscode.CancellationTokenSource();
     const onAbort = (): void => cts.cancel();

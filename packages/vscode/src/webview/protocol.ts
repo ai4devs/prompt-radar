@@ -18,7 +18,6 @@ export interface RenderFragmentPayload {
   failed: boolean;
   responses: Response[];
   missedSmells: MissedSmell[];
-  consent: boolean;
 }
 
 export interface WorkspaceDimEntry {
@@ -37,7 +36,6 @@ export interface RenderWorkspacePayload {
   detected: number;
   analyzed: number;
   notPrompt: number;
-  consent: boolean;
   byDimension: Record<Dimension, WorkspaceDimEntry[]>;
 }
 
@@ -62,5 +60,4 @@ export type WebviewMessage =
       name: string;
       severity: Severity;
       rationale?: string;
-    }
-  | { type: "export" };
+    };

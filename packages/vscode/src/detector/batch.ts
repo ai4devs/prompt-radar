@@ -53,6 +53,7 @@ export async function analyzeFragments(params: {
           ...fragment,
           artifactType: result.artifact_type,
           toolOutput: result,
+          model: detector.model,
           analyzedAt: new Date().toISOString(),
           failed: false,
         });

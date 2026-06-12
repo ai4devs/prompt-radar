@@ -15,6 +15,7 @@ import {
 interface CachedAnalysis {
   artifactTextSha256: string;
   toolOutput: DetectorJSON;
+  model?: string;
   analyzedAt?: string;
 }
 
@@ -147,6 +148,7 @@ export class PromptIndexStore implements vscode.Disposable {
         this.analysisCache.set(fragment.id, {
           artifactTextSha256: fragment.artifactTextSha256,
           toolOutput: fragment.toolOutput,
+          model: fragment.model,
           analyzedAt: fragment.analyzedAt,
         });
       }
@@ -161,13 +163,17 @@ export class PromptIndexStore implements vscode.Disposable {
   takeCachedAnalysis(
     id: string,
     artifactTextSha256: string
-  ): { toolOutput: DetectorJSON; analyzedAt?: string } | undefined {
+  ): { toolOutput: DetectorJSON; model?: string; analyzedAt?: string } | undefined {
     const cached = this.analysisCache.get(id);
     if (!cached || cached.artifactTextSha256 !== artifactTextSha256) {
       return undefined;
     }
     this.analysisCache.delete(id);
-    return { toolOutput: cached.toolOutput, analyzedAt: cached.analyzedAt };
+    return {
+      toolOutput: cached.toolOutput,
+      model: cached.model,
+      analyzedAt: cached.analyzedAt,
+    };
   }
 
   /** Drop analysis output from every fragment (back to "pending"), keeping the

@@ -31,6 +31,11 @@ export class Detector {
     private readonly options: { temperature: number; timeoutMs: number }
   ) {}
 
+  /** Model that served the last completion (best effort; see LLMProvider.model). */
+  get model(): string | undefined {
+    return this.provider.model;
+  }
+
   async analyze(artifact: string, signal: AbortSignal): Promise<DetectorJSON> {
     const basePrompt = await buildDetectorPrompt(this.extensionUri, artifact);
     let lastRaw = "";

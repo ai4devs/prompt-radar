@@ -44,6 +44,9 @@ const BASE_EXCLUDES = [
   "**/*.min.js",
   "**/*.bundle.js",
   "**/*.map",
+  // Our own session-log exports (default save location is the workspace root);
+  // they contain prompt text and would otherwise be re-detected as prompts.
+  "**/prompt-radar-session-*.json",
 ];
 
 const MAX_FILE_BYTES = 1_000_000;

@@ -20,6 +20,9 @@ export class RadarPanel implements vscode.Disposable {
 
   private panel: vscode.WebviewPanel | undefined;
   private current: { mode: "fragment"; fragmentId: string } | { mode: "workspace" } | undefined;
+  // The exact Fragment object last rendered — upsert() replaces a fragment's
+  // object, so reference equality tells us whether the shown fragment changed.
+  private lastRenderedFragment: Fragment | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -31,7 +34,20 @@ export class RadarPanel implements vscode.Disposable {
     // Re-render when the index changes (e.g. analysis completes). We deliberately
     // do NOT re-render on responseLog changes so an in-progress rationale the
     // user is typing in the webview is never clobbered.
-    this.disposables.push(this.index.onDidChange(() => this.postRender()));
+    this.disposables.push(this.index.onDidChange(() => this.onIndexChanged()));
+  }
+
+  // In fragment mode, skip the re-render when the displayed fragment itself is
+  // untouched (e.g. batch analysis completing OTHER fragments) — a re-render
+  // rebuilds the DOM and would discard a rationale the user is typing.
+  private onIndexChanged(): void {
+    if (this.current?.mode === "fragment") {
+      const fragment = this.index.get(this.current.fragmentId);
+      if (fragment && fragment === this.lastRenderedFragment) {
+        return;
+      }
+    }
+    this.postRender();
   }
 
   showFragment(fragmentId: string): void {
@@ -115,12 +131,9 @@ export class RadarPanel implements vscode.Disposable {
     if (!this.panel || !this.current) {
       return;
     }
-    const consent = vscode.workspace
-      .getConfiguration("promptRadar")
-      .get<boolean>("research.consent", false);
-
     let payload: RenderPayload;
     if (this.current.mode === "workspace") {
+      this.lastRenderedFragment = undefined;
       const agg = computeAggregate(this.index.all());
       payload = {
         mode: "workspace",
@@ -130,7 +143,6 @@ export class RadarPanel implements vscode.Disposable {
         detected: agg.detected,
         analyzed: agg.analyzed,
         notPrompt: agg.notPrompt,
-        consent,
         byDimension: this.workspaceByDimension(),
       };
     } else {
@@ -138,6 +150,7 @@ export class RadarPanel implements vscode.Disposable {
       if (!fragment) {
         return;
       }
+      this.lastRenderedFragment = fragment;
       payload = {
         mode: "fragment",
         fragment: {
@@ -150,7 +163,6 @@ export class RadarPanel implements vscode.Disposable {
         failed: !!fragment.failed,
         responses: this.responses.responsesFor(fragment.id),
         missedSmells: this.responses.missedSmellsFor(fragment.id),
-        consent,
       };
     }
     void this.panel.webview.postMessage({ type: "render", payload });
@@ -159,10 +171,6 @@ export class RadarPanel implements vscode.Disposable {
   private onMessage(msg: WebviewMessage | { type: "ready" }): void {
     if (msg.type === "ready") {
       this.postRender();
-      return;
-    }
-    if (msg.type === "export") {
-      void vscode.commands.executeCommand("promptRadar.exportSessionLog");
       return;
     }
     if (msg.type === "revealFragment") {
@@ -338,7 +346,6 @@ body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); 
 .score small { display:block; font-size: 10px; font-weight: 500; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.14em; margin-top: 6px; }
 #chart-wrap { max-width: 360px; margin: 10px auto 4px; }
 .summary { opacity: 0.82; line-height: 1.55; text-align: center; margin: 10px auto 16px; max-width: 540px; }
-.consent-banner { background: rgba(234,179,8,0.12); border: 1px solid rgba(234,179,8,0.4); color:#d4a017; border-radius: 8px; padding: 7px 12px; font-size: 11px; margin: 12px 0; text-align: center; }
 
 /* dimension sections */
 .dim-section { border: 1px solid var(--vscode-widget-border, rgba(127,127,127,0.22)); border-radius: 10px; margin: 10px 0; overflow: hidden; background: var(--vscode-editorWidget-background, rgba(127,127,127,0.04)); }
@@ -399,7 +406,6 @@ body.pr-light .s-good { color:#15803d; } body.pr-light .s-mid { color:#a16207; }
 button.action { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border:none; border-radius:6px; padding:7px 14px; cursor:pointer; font-size:12px; font-weight:500; }
 button.action:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
 button.action.secondary { background: transparent; border:1px solid var(--vscode-widget-border, rgba(127,127,127,0.4)); color: var(--vscode-foreground); }
-.footer { display:flex; gap:10px; justify-content:center; margin-top:20px; }
 .missed-form { border:1px solid var(--vscode-widget-border, rgba(127,127,127,0.3)); border-radius:8px; padding:12px 14px; margin-top:10px; display:none; flex-direction:column; gap:7px; }
 .missed-form.open { display:flex; }
 .missed-form input, .missed-form select, .missed-form textarea { background: var(--vscode-input-background); color: var(--vscode-input-foreground); border:1px solid var(--vscode-input-border, rgba(127,127,127,0.3)); border-radius:6px; padding:6px 8px; font-family:inherit; font-size:12px; }

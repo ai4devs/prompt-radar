@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Fragment } from "../model/types";
+import { smellResponseKey, type Fragment } from "../model/types";
 import type { PromptIndexStore } from "../model/PromptIndexStore";
 import type { ResponseLogStore } from "../model/ResponseLogStore";
 
@@ -51,7 +51,10 @@ export class PromptsTreeDataProvider
         vscode.TreeItemCollapsibleState.Collapsed
       );
       item.description = `${dirname(node.file)}  ·  ${analyzed}/${fragments.length}`;
-      item.resourceUri = vscode.Uri.file(node.file);
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (root) {
+        item.resourceUri = vscode.Uri.joinPath(root, node.file);
+      }
       item.iconPath = vscode.ThemeIcon.File;
       item.contextValue = "promptRadar.file";
       item.tooltip = node.file;
@@ -84,12 +87,12 @@ export class PromptsTreeDataProvider
     if (!f.toolOutput) {
       return { n: 0, m: 0 };
     }
-    const smellIds = f.toolOutput.dimensions.flatMap((d) =>
-      d.smells.map((s) => s.id)
+    const keys = f.toolOutput.dimensions.flatMap((d) =>
+      d.smells.map((s, i) => smellResponseKey(d.dimension, i, s.id))
     );
     const responded = new Set(this.responses.responsesFor(f.id).map((r) => r.smellId));
-    const n = smellIds.filter((id) => responded.has(id)).length;
-    return { n, m: smellIds.length };
+    const n = keys.filter((key) => responded.has(key)).length;
+    return { n, m: keys.length };
   }
 
   dispose(): void {

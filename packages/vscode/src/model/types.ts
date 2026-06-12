@@ -3,6 +3,21 @@ import type { DetectorJSON } from "../detector/schema";
 
 export type Decision = "agree" | "disagree" | "unsure";
 
+/**
+ * Per-occurrence response key. A smell's catalog id is NOT unique within a
+ * fragment (the detector can flag the same catalog smell at two sites), so
+ * responses are keyed by dimension + position + catalog id. Stored in
+ * `Response.smellId`. Used by both the webview and the tree provider so the
+ * reviewed-N/M counts and the cards always agree.
+ */
+export function smellResponseKey(
+  dimension: string,
+  index: number,
+  smellId: string
+): string {
+  return `${dimension}#${index}:${smellId}`;
+}
+
 export interface FragmentSpan {
   char_start: number;
   char_end: number;
@@ -22,13 +37,14 @@ export interface Fragment {
   artifactTextSha256: string;
   confidence: number; // 0–1, scanner detection confidence
   toolOutput?: DetectorJSON; // populated after analysis
+  model?: string; // model that produced toolOutput (best effort)
   scannedAt: string; // ISO
   analyzedAt?: string; // ISO
   failed?: boolean; // detector returned malformed output
 }
 
 export interface Response {
-  smellId: string;
+  smellId: string; // per-occurrence key, see smellResponseKey()
   decision: Decision;
   rationale?: string;
   shownAt: string; // ISO — when the smell was first rendered
@@ -51,9 +67,8 @@ export interface PromptIndex {
   byFile: Map<string, string[]>; // file → fragment ids
 }
 
-// In-memory research session log (persisted as responses.json). Consent and
-// pseudonym are sourced from settings at export time (spec §8.3); the log itself
-// keeps the session identity and the user's responses/missed smells.
+// In-memory session log (persisted as responses.json): the session identity
+// and the user's responses/missed smells.
 export interface ResponseLog {
   sessionId: string;
   startedAt: string;

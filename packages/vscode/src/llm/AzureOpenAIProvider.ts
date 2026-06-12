@@ -20,6 +20,10 @@ export class AzureOpenAIProvider implements LLMProvider {
 
   constructor(private readonly config: AzureConfig) {}
 
+  get model(): string {
+    return `azure/${this.config.deployment}`;
+  }
+
   async complete(prompt: string, options: CompleteOptions): Promise<string> {
     const { endpoint, deployment, apiVersion, apiKey } = this.config;
     const url =
@@ -37,81 +41,102 @@ export class AzureOpenAIProvider implements LLMProvider {
       options.signal.addEventListener("abort", onExternalAbort, { once: true });
     }
 
-    let response: Response;
+    // The timer stays armed until the BODY has been read too — reading the
+    // response stream shares the abort signal, so a stalled body also times out.
     try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": apiKey,
-        },
-        body: JSON.stringify({
-          messages: [{ role: "user", content: prompt }],
-          temperature: options.temperature,
-          response_format: { type: "json_object" },
-        }),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (options.signal.aborted) {
-        throw new ProviderError("timeout", "Request cancelled.", err);
-      }
-      if (controller.signal.aborted) {
-        throw new ProviderError(
-          "timeout",
-          `Azure OpenAI request timed out after ${options.timeoutMs} ms.`,
-          err
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": apiKey,
+          },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: prompt }],
+            temperature: options.temperature,
+            response_format: { type: "json_object" },
+          }),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        throw this.abortOr(
+          err,
+          options,
+          new ProviderError(
+            "network",
+            `Network error contacting Azure OpenAI: ${errorMessage(err)}`,
+            err
+          )
         );
       }
-      throw new ProviderError(
-        "network",
-        `Network error contacting Azure OpenAI: ${errorMessage(err)}`,
-        err
-      );
+
+      if (!response.ok) {
+        const detail = await safeBodyText(response);
+        if (response.status === 401 || response.status === 403) {
+          throw new ProviderError(
+            "auth",
+            `Azure OpenAI authentication failed (HTTP ${response.status}). Check the API key and endpoint.`
+          );
+        }
+        if (response.status === 429) {
+          throw new ProviderError(
+            "rate_limit",
+            "Azure OpenAI rate limit reached (HTTP 429). Retry shortly."
+          );
+        }
+        throw new ProviderError(
+          "unknown",
+          `Azure OpenAI returned HTTP ${response.status}: ${truncate(detail, 300)}`
+        );
+      }
+
+      let body: { choices?: Array<{ message?: { content?: string } }> };
+      try {
+        body = (await response.json()) as typeof body;
+      } catch (err) {
+        throw this.abortOr(
+          err,
+          options,
+          new ProviderError(
+            "invalid_response",
+            "Azure OpenAI returned a non-JSON body.",
+            err
+          )
+        );
+      }
+
+      const content = body.choices?.[0]?.message?.content;
+      if (typeof content !== "string" || content.length === 0) {
+        throw new ProviderError(
+          "invalid_response",
+          "Azure OpenAI response contained no message content."
+        );
+      }
+      return content;
     } finally {
       clearTimeout(timer);
       options.signal.removeEventListener("abort", onExternalAbort);
     }
+  }
 
-    if (!response.ok) {
-      const detail = await safeBodyText(response);
-      if (response.status === 401 || response.status === 403) {
-        throw new ProviderError(
-          "auth",
-          `Azure OpenAI authentication failed (HTTP ${response.status}). Check the API key and endpoint.`
-        );
-      }
-      if (response.status === 429) {
-        throw new ProviderError(
-          "rate_limit",
-          "Azure OpenAI rate limit reached (HTTP 429). Retry shortly."
-        );
-      }
-      throw new ProviderError(
-        "unknown",
-        `Azure OpenAI returned HTTP ${response.status}: ${truncate(detail, 300)}`
-      );
+  /** Map an error to cancel/timeout when an abort caused it; otherwise use `fallback`. */
+  private abortOr(
+    err: unknown,
+    options: CompleteOptions,
+    fallback: ProviderError
+  ): ProviderError {
+    if (options.signal.aborted) {
+      return new ProviderError("timeout", "Request cancelled.", err);
     }
-
-    let body: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      body = (await response.json()) as typeof body;
-    } catch (err) {
-      throw new ProviderError(
-        "invalid_response",
-        "Azure OpenAI returned a non-JSON body.",
+    if (err instanceof DOMException && err.name === "AbortError") {
+      return new ProviderError(
+        "timeout",
+        `Azure OpenAI request timed out after ${options.timeoutMs} ms.`,
         err
       );
     }
-
-    const content = body.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || content.length === 0) {
-      throw new ProviderError(
-        "invalid_response",
-        "Azure OpenAI response contained no message content."
-      );
-    }
-    return content;
+    return fallback;
   }
 }
 

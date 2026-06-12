@@ -16,7 +16,7 @@ import {
 } from "../detector/types";
 import type { DimensionResult, Smell } from "../detector/schema";
 import type { Severity } from "../detector/types";
-import type { Decision } from "../model/types";
+import { smellResponseKey, type Decision } from "../model/types";
 import type {
   RenderFragmentPayload,
   RenderPayload,
@@ -41,15 +41,8 @@ declare function acquireVsCodeApi(): {
 const vscode = acquireVsCodeApi();
 
 let chart: Chart<"radar"> | null = null;
-// shownAt[smellId] = ISO time the smell was first rendered this session.
+// shownAt[responseKey] = ISO time the smell was first rendered this session.
 const shownAt = new Map<string, string>();
-
-// Monotonic per-render counter giving each smell card a DOM-unique radio group
-// name. The three radios of one card share a name to be mutually exclusive, but
-// two cards can carry the same smell.id (a catalog id, not a per-occurrence id);
-// reusing it as the group name made native radios collide across cards, so a
-// click in one card unchecked the selection in another. Reset on each render.
-let cardSeq = 0;
 
 // Order for the collapsible dimension cards: Security first (it is the highest
 // review priority), then the rest in their canonical order. The radar chart
@@ -95,14 +88,6 @@ function scoreClass(score: number): string {
   if (score >= 3.5) return "s-good";
   if (score >= 2) return "s-mid";
   return "s-bad";
-}
-
-function consentBanner(): HTMLElement {
-  return el(
-    "div",
-    "consent-banner",
-    "Research consent off — exports are anonymized."
-  );
 }
 
 // ── chart ────────────────────────────────────────────────────────────────────
@@ -231,8 +216,8 @@ function renderFragment(p: RenderFragmentPayload): void {
   const det = p.detector;
 
   // Not a prompt → no score, no radar (it would otherwise report 5/5 and skew
-  // the workspace metrics). Show N/A; the reviewer can still add a missed smell
-  // or export.
+  // the workspace metrics). Show N/A; the reviewer can still add a missed
+  // smell.
   if (det.artifact_type === "not_a_prompt") {
     const na = el("div", "na-card");
     na.appendChild(el("div", "na-badge", "N/A — not a prompt"));
@@ -245,13 +230,7 @@ function renderFragment(p: RenderFragmentPayload): void {
       )
     );
     root.appendChild(na);
-    if (!p.consent) root.appendChild(consentBanner());
     root.appendChild(buildMissedSmells(p));
-    const footer = el("div", "footer");
-    const exportBtn = el("button", "action", "Export this session");
-    exportBtn.addEventListener("click", () => vscode.postMessage({ type: "export" }));
-    footer.appendChild(exportBtn);
-    root.appendChild(footer);
     return;
   }
 
@@ -278,9 +257,6 @@ function renderFragment(p: RenderFragmentPayload): void {
   if (det.summary) {
     root.appendChild(el("p", "summary", det.summary));
   }
-  if (!p.consent) {
-    root.appendChild(consentBanner());
-  }
 
   // Map stored responses by smell id.
   const bySmell = new Map(p.responses.map((r) => [r.smellId, r]));
@@ -297,13 +273,6 @@ function renderFragment(p: RenderFragmentPayload): void {
 
   // Missed smells + form.
   root.appendChild(buildMissedSmells(p));
-
-  // Footer.
-  const footer = el("div", "footer");
-  const exportBtn = el("button", "action", "Export this session");
-  exportBtn.addEventListener("click", () => vscode.postMessage({ type: "export" }));
-  footer.appendChild(exportBtn);
-  root.appendChild(footer);
 
   drawChart(
     DIMENSIONS.map(
@@ -337,18 +306,20 @@ function buildDimensionSection(
     details.appendChild(el("div", "no-smells", "✓ No smells in this dimension."));
     return details;
   }
-  for (const smell of dim.smells) {
-    details.appendChild(buildSmell(smell, bySmell.get(smell.id)));
-  }
+  dim.smells.forEach((smell, i) => {
+    const key = smellResponseKey(dim.dimension, i, smell.id);
+    details.appendChild(buildSmell(smell, key, bySmell.get(key)));
+  });
   return details;
 }
 
 function buildSmell(
   smell: Smell,
+  key: string,
   stored?: { decision: string; rationale?: string; shownAt: string }
 ): HTMLElement {
-  if (!shownAt.has(smell.id)) {
-    shownAt.set(smell.id, stored?.shownAt ?? new Date().toISOString());
+  if (!shownAt.has(key)) {
+    shownAt.set(key, stored?.shownAt ?? new Date().toISOString());
   }
 
   const card = el("div", `smell sevcard-${smell.severity}`);
@@ -377,9 +348,10 @@ function buildSmell(
     card.appendChild(ev);
   }
 
-  // Agree / Disagree / Unsure radios.
+  // Agree / Disagree / Unsure radios. The response key is unique per card, so
+  // it doubles as the radio group name without colliding across cards.
   const radios = el("div", "radios");
-  const group = `r-${smell.id}-${++cardSeq}`;
+  const group = `r-${key}`;
   const rationale = el("textarea", "rationale") as HTMLTextAreaElement;
   rationale.placeholder = "Optional rationale…";
   rationale.rows = 2;
@@ -389,10 +361,10 @@ function buildSmell(
   const post = (decision: Decision): void => {
     vscode.postMessage({
       type: "response",
-      smellId: smell.id,
+      smellId: key,
       decision,
       rationale: rationale.value || undefined,
-      shownAt: shownAt.get(smell.id) ?? new Date().toISOString(),
+      shownAt: shownAt.get(key) ?? new Date().toISOString(),
     });
   };
 
@@ -531,7 +503,6 @@ function renderWorkspace(p: RenderWorkspacePayload): void {
         "."
     )
   );
-  if (!p.consent) root.appendChild(consentBanner());
 
   for (const dim of SECTION_DIMENSIONS) {
     const mean = p.dimensionMeans[dim];
@@ -614,7 +585,6 @@ window.addEventListener("message", (event: MessageEvent) => {
   // variants (dark mode keeps its current look).
   document.body.classList.toggle("pr-light", isLightTheme());
   shownAt.clear();
-  cardSeq = 0;
   if (msg.payload.mode === "workspace") {
     renderWorkspace(msg.payload);
   } else {
