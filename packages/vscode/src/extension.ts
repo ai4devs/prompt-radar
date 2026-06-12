@@ -25,7 +25,7 @@ import { Logger } from "./util/logger";
 import { fragmentId, sha256 } from "./util/hash";
 import { errorMessage } from "./util/errors";
 
-const SETTINGS_QUERY = "@ext:ai4devs.prompt-radar";
+const SETTINGS_QUERY = "@ext:ai4dev.prompt-radar";
 
 let promptIndex: PromptIndexStore | undefined;
 let responseLog: ResponseLogStore | undefined;

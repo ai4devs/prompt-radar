@@ -70,8 +70,8 @@ first-balanced-`{...}` fallback; retry once (consent-dialog race). This logic is
 
 - **Renamed** `prompt-smells` → `prompt-radar`; every `promptSmells.*` command/setting →
   `promptRadar.*`; displayName "Prompt Smells Analyzer" → "Prompt Radar"; output channel "Prompt
-  Smells" → "Prompt Radar". Publisher was `vanilson`, changed to `ai4devs` for the public release
-  (extension id `ai4devs.prompt-radar`). **Old identifiers, for recovery:**
+  Smells" → "Prompt Radar". Publisher was `vanilson`, changed to `ai4dev` for the public release
+  (extension id `ai4dev.prompt-radar`; the GitHub org stays `ai4devs`). **Old identifiers, for recovery:**
   commands `promptSmells.analyzeSelection` / `promptSmells.clearDiagnostics` /
   `promptSmells.showRadar`; setting `promptSmells.model`; package `prompt-smells`.
 - Dimension `cost` → `efficiency`; smell severities `error|warning|info` →
