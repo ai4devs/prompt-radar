@@ -13,6 +13,7 @@ import { PromptIndexStore } from "./model/PromptIndexStore";
 import { ResponseLogStore } from "./model/ResponseLogStore";
 import type { Fragment } from "./model/types";
 import { Scanner } from "./scanner/Scanner";
+import { disposeSharedRuntime } from "./scanner/ast/runtime";
 import { InlineController } from "./presentation/inlineController";
 import {
   PromptsTreeDataProvider,
@@ -38,6 +39,9 @@ const fragmentsInFlight = new Set<string>();
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const outputChannel = vscode.window.createOutputChannel("Prompt Radar");
   const logger = new Logger(outputChannel);
+
+  // Tree-sitter grammars are packaged under dist/wasm/.
+  const wasmDir = vscode.Uri.joinPath(context.extensionUri, "dist", "wasm").fsPath;
 
   const index = new PromptIndexStore();
   const responses = new ResponseLogStore();
@@ -139,11 +143,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     vscode.commands.registerCommand("promptRadar.scanWorkspace", () =>
-      scanWorkspace(logger, index)
+      scanWorkspace(logger, index, wasmDir)
     ),
 
     vscode.commands.registerCommand("promptRadar.rescanCurrentFile", () =>
-      rescanCurrentFile(logger, index)
+      rescanCurrentFile(logger, index, wasmDir)
     ),
 
     vscode.commands.registerCommand("promptRadar.openFragment", (id: string) =>
@@ -182,6 +186,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export async function deactivate(): Promise<void> {
+  disposeSharedRuntime();
   await Promise.all([
     promptIndex?.flush(),
     responseLog?.flush(),
@@ -355,7 +360,8 @@ async function analyzeSelection(
 
 async function scanWorkspace(
   logger: Logger,
-  index: PromptIndexStore
+  index: PromptIndexStore,
+  wasmDir: string
 ): Promise<void> {
   if (!vscode.workspace.workspaceFolders?.length) {
     await vscode.window.showWarningMessage("Prompt Radar: open a folder to scan.");
@@ -369,7 +375,7 @@ async function scanWorkspace(
       cancellable: true,
     },
     async (progress, token) => {
-      const scanner = new Scanner(logger);
+      const scanner = new Scanner(logger, wasmDir);
       const { fragments, capped } = await scanner.scanWorkspace(progress, token);
       if (token.isCancellationRequested) {
         logger.info("Scan cancelled.");
@@ -386,14 +392,15 @@ async function scanWorkspace(
 
 async function rescanCurrentFile(
   logger: Logger,
-  index: PromptIndexStore
+  index: PromptIndexStore,
+  wasmDir: string
 ): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     await vscode.window.showWarningMessage("Prompt Radar: open a file to rescan.");
     return;
   }
-  const scanner = new Scanner(logger);
+  const scanner = new Scanner(logger, wasmDir);
   const fresh = await scanner.scanFile(editor.document.uri);
   const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
   index.replaceFile(rel, mergeAnalysis(index, fresh));

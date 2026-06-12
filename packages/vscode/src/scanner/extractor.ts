@@ -1,30 +1,32 @@
-// Tier 2 — heuristic fragment extraction (precision-first, v0.1.1).
+// Tier 2 — heuristic fragment extraction (precision-first).
 //
-// TODO(v0.2): replace with a tree-sitter AST extractor (spec §6.2). For v0.1 we
-// avoid native/WASM parser deps to keep the .vsix cross-platform (see NOTES.md).
-// Extraction only emits a fragment when there is a real signal: a string at a
-// specific LLM call site, a message-array content/role key, a prompt-named
-// assignment in a file that imports an LLM SDK, or telltale "You are …" content.
-// Generic directory names and generic method calls are deliberately NOT signals.
+// This is the FALLBACK extraction path: the scanner prefers the tree-sitter AST
+// extractor (ast/) and drops to these regex/tokenizer heuristics when a grammar
+// can't load or a language has no grammar. Extraction only emits a fragment when
+// there is a real signal: a string at a specific LLM call site, a message-array
+// content/role key, a prompt-named assignment in a file that imports an LLM SDK,
+// or telltale "You are …" content. Generic directory names and generic method
+// calls are deliberately NOT signals.
 
-import type { ArtifactType } from "../detector/types";
 import { extname, type PrefilterResult } from "./prefilter";
+import {
+  CONF,
+  indentOf,
+  type Lang,
+  lineEndOffset,
+  lineOf,
+  lineStarts,
+  looksLikeNaturalLanguage,
+  MAX_FRAGMENTS_PER_FILE,
+  type RawFragment,
+  regionUnit,
+  unit,
+  wholeFileUnit,
+} from "./shared";
 
-export interface RawFragment {
-  char_start: number; // document offset of the artifact text start
-  char_end: number;
-  line_start: number; // 0-based
-  line_end: number;
-  text: string; // the prompt text (string contents, no quotes)
-  confidence: number; // 0–1
-  artifactType: ArtifactType;
-}
-
-type Lang = "python" | "js";
+export type { RawFragment } from "./shared";
 
 const DEFAULT_MIN_CONFIDENCE = 0.6;
-const MIN_INNER_LEN = 16;
-const MAX_FRAGMENTS_PER_FILE = 200;
 const CALL_ARG_WINDOW_LINES = 8; // a string is "at" a call site if within N lines after it
 
 const CODE_EXTS = new Set([
@@ -36,6 +38,8 @@ const CODE_EXTS = new Set([
   ".jsx",
   ".mjs",
   ".cjs",
+  ".java",
+  ".cs",
 ]);
 
 interface StringTok {
@@ -48,35 +52,10 @@ interface StringTok {
 
 export function languageForPath(relPath: string): Lang {
   const ext = extname(relPath);
-  return ext === ".py" || ext === ".pyi" ? "python" : "js";
-}
-
-// ── offset → line ────────────────────────────────────────────────────────────
-
-function lineStarts(content: string): number[] {
-  const starts = [0];
-  for (let i = 0; i < content.length; i++) {
-    if (content[i] === "\n") {
-      starts.push(i + 1);
-    }
-  }
-  return starts;
-}
-
-function lineOf(starts: number[], offset: number): number {
-  let lo = 0;
-  let hi = starts.length - 1;
-  let ans = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (starts[mid] <= offset) {
-      ans = mid;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return ans;
+  if (ext === ".py" || ext === ".pyi") return "python";
+  if (ext === ".java") return "java";
+  if (ext === ".cs") return "csharp";
+  return "js";
 }
 
 function isIdentChar(c: string | undefined): boolean {
@@ -92,10 +71,18 @@ const CALL_SITE_PATTERNS: RegExp[] = [
   /\.responses\.create\s*\(/g,
   /\bChatCompletion\.create\s*\(/g,
   /\blitellm\.a?completion\s*\(/g,
-  /\b(Chat)?PromptTemplate\s*\(/g,
+  /\b(Chat)?PromptTemplate\s*[.(]/g,
   /\.from_template\s*\(/g,
   /\.from_messages\s*\(/g,
-  /\b(System|Human|AI)Message(PromptTemplate)?\s*\(/g,
+  /\b(System|Human|User|AI)Message(PromptTemplate)?\s*[.(]/g,
+  // Java — Spring AI fluent client + LangChain4j; anchored on a string/text-block arg.
+  /\.(prompt|system|user)\s*\(\s*"/g,
+  /\b@(System|User)Message\s*\(/g,
+  // C# — Semantic Kernel + chat history.
+  /\b(CreateFunctionFromPrompt|InvokePromptAsync|CreateFromPrompt)\s*\(/g,
+  /\.Add(System|User|Assistant)Message\s*\(/g,
+  /\bnew\s+(System|User|Assistant)ChatMessage\s*\(/g,
+  /\bnew\s+ChatRequest(System|User|Assistant)Message\s*\(/g,
 ];
 
 function findCallSiteLines(content: string, starts: number[]): Set<number> {
@@ -125,18 +112,17 @@ function scanStrings(content: string, lang: Lang): StringTok[] {
       while (i < n && content[i] !== "\n") i++;
       continue;
     }
-    if (lang === "js" && ch === "/" && content[i + 1] === "/") {
+    if (lang !== "python" && ch === "/" && content[i + 1] === "/") {
       while (i < n && content[i] !== "\n") i++;
       continue;
     }
-    if (lang === "js" && ch === "/" && content[i + 1] === "*") {
+    if (lang !== "python" && ch === "/" && content[i + 1] === "*") {
       i += 2;
       while (i < n && !(content[i] === "*" && content[i + 1] === "/")) i++;
       i += 2;
       continue;
     }
-    const tok =
-      lang === "python" ? readPyString(content, i) : readJsString(content, i);
+    const tok = readString(content, i, lang);
     if (tok) {
       toks.push(tok);
       i = tok.end;
@@ -145,6 +131,23 @@ function scanStrings(content: string, lang: Lang): StringTok[] {
     i++;
   }
   return toks;
+}
+
+function readString(
+  content: string,
+  i: number,
+  lang: Lang
+): StringTok | undefined {
+  switch (lang) {
+    case "python":
+      return readPyString(content, i);
+    case "java":
+      return readJavaString(content, i);
+    case "csharp":
+      return readCsString(content, i);
+    default:
+      return readJsString(content, i);
+  }
 }
 
 function readPyString(content: string, start: number): StringTok | undefined {
@@ -215,19 +218,112 @@ function readJsString(content: string, start: number): StringTok | undefined {
   return { start, end, innerStart, innerEnd, inner: content.slice(innerStart, innerEnd) };
 }
 
-// ── natural-language gate ────────────────────────────────────────────────────
+// Java: regular `"..."` (with escapes, single line) and text blocks `"""..."""`.
+function readJavaString(content: string, start: number): StringTok | undefined {
+  const quote = content[start];
+  if (quote !== '"') {
+    return undefined;
+  }
+  const triple = content[start + 1] === '"' && content[start + 2] === '"';
+  const innerStart = start + (triple ? 3 : 1);
+  let k = innerStart;
+  while (k < content.length) {
+    const c = content[k];
+    if (c === "\\") {
+      k += 2;
+      continue;
+    }
+    if (triple) {
+      if (c === '"' && content[k + 1] === '"' && content[k + 2] === '"') {
+        break;
+      }
+    } else if (c === '"' || c === "\n") {
+      break;
+    }
+    k++;
+  }
+  const innerEnd = k;
+  const end = triple
+    ? Math.min(content.length, k + 3)
+    : content[k] === '"'
+      ? k + 1
+      : k;
+  return { start, end, innerStart, innerEnd, inner: content.slice(innerStart, innerEnd) };
+}
 
-function looksLikeNaturalLanguage(s: string): boolean {
-  const t = s.trim();
-  if (t.length < MIN_INNER_LEN) return false;
-  if (!/\s/.test(t)) return false; // identifiers / paths / single tokens
-  if (!/[A-Za-z]/.test(t)) return false;
-  if (/^https?:\/\//i.test(t)) return false;
-  if (/^[\w./:@+-]+$/.test(t)) return false; // path/url/ident-only
-  return true;
+// C#: regular `"..."`, verbatim `@"..."` (where `""` is an escaped quote), raw
+// `"""..."""`, and interpolated `$"..."` / `$@"..."` (treated like their base form).
+function readCsString(content: string, start: number): StringTok | undefined {
+  let j = start;
+  let verbatim = false;
+  let interpolated = false;
+  // Consume any combination of `$` and `@` prefixes.
+  while (content[j] === "$" || content[j] === "@") {
+    if (content[j] === "@") verbatim = true;
+    if (content[j] === "$") interpolated = true;
+    j++;
+  }
+  const quote = content[j];
+  if (quote !== '"') {
+    return undefined;
+  }
+  if ((verbatim || interpolated) && isIdentChar(content[start - 1])) {
+    return undefined;
+  }
+  const triple = content[j + 1] === '"' && content[j + 2] === '"';
+  if (triple) {
+    const innerStart = j + 3;
+    let k = innerStart;
+    while (k < content.length) {
+      if (
+        content[k] === '"' &&
+        content[k + 1] === '"' &&
+        content[k + 2] === '"'
+      ) {
+        break;
+      }
+      k++;
+    }
+    const innerEnd = k;
+    const end = Math.min(content.length, k + 3);
+    return { start, end, innerStart, innerEnd, inner: content.slice(innerStart, innerEnd) };
+  }
+  const innerStart = j + 1;
+  let k = innerStart;
+  while (k < content.length) {
+    const c = content[k];
+    if (verbatim) {
+      if (c === '"') {
+        if (content[k + 1] === '"') {
+          k += 2; // escaped quote inside a verbatim string
+          continue;
+        }
+        break;
+      }
+    } else {
+      if (c === "\\") {
+        k += 2;
+        continue;
+      }
+      if (c === '"' || c === "\n") {
+        break;
+      }
+    }
+    k++;
+  }
+  const innerEnd = k;
+  const end = content[k] === '"' ? k + 1 : k;
+  return { start, end, innerStart, innerEnd, inner: content.slice(innerStart, innerEnd) };
 }
 
 // ── confidence ───────────────────────────────────────────────────────────────
+
+// Prompt-named binding signal. Accepts `=` (assignment) and `:` (object
+// property / field with type), so JS/TS `{ systemPrompt: "…" }` and `prompt =`
+// both match; trailing `\(?` allows parenthesized / implicitly-concatenated
+// values like `system = (\n  "You are…"`.
+const PROMPT_NAME_RE =
+  /\b[\w$]*(prompt|template|system|instruction|messages?|msg|sys)[\w$]*\s*(?::\s*[\w$<>[\]. |]+)?\s*[:=]\s*\(?\s*$/i;
 
 function confidenceFor(
   content: string,
@@ -241,28 +337,21 @@ function confidenceFor(
 
   // message-array content / role key immediately before the string
   if (/["']?content["']?\s*:\s*$/.test(before)) {
-    conf = Math.max(conf, 0.85);
+    conf = Math.max(conf, CONF.contentKey);
   }
   if (/["']?(system|user|assistant|developer)["']?\s*:\s*$/.test(before)) {
-    conf = Math.max(conf, 0.8);
+    conf = Math.max(conf, CONF.roleKey);
   }
 
   // prompt-named assignment — only trusted in a file that imports an LLM SDK.
-  // Trailing `\(?` allows parenthesized / implicitly-concatenated assignments
-  // like `system = (\n  "You are…"`.
-  if (
-    hasSdkImport &&
-    /\b\w*(prompt|template|system|instruction|messages?|msg|sys)\w*\s*(:\s*str)?\s*=\s*\(?\s*$/i.test(
-      before
-    )
-  ) {
-    conf = Math.max(conf, 0.8);
+  if (hasSdkImport && PROMPT_NAME_RE.test(before)) {
+    conf = Math.max(conf, CONF.promptName);
   }
 
   // directional proximity to a specific LLM call site (call on/just-before line)
   for (let l = tokLine; l >= tokLine - CALL_ARG_WINDOW_LINES && l >= 0; l--) {
     if (callLines.has(l)) {
-      conf = Math.max(conf, l === tokLine ? 0.9 : 0.8);
+      conf = Math.max(conf, l === tokLine ? CONF.callSiteSameLine : CONF.callSiteNear);
       break;
     }
   }
@@ -270,7 +359,7 @@ function confidenceFor(
   // strong telltale content signal (independent of imports). No leading \b so it
   // still fires when glued to an escape (e.g. "\nYou are"); no article required.
   if (/you are\b/i.test(tok.inner)) {
-    conf = Math.max(conf, 0.7);
+    conf = Math.max(conf, CONF.youAre);
   }
 
   return conf;
@@ -406,11 +495,6 @@ interface HitGroup {
   hits: RawFragment[];
 }
 
-function indentOf(lines: string[], ln: number): number {
-  const s = lines[ln] ?? "";
-  return s.length - s.trimStart().length;
-}
-
 function isPyHeader(lines: string[], ln: number): boolean {
   return /^(async\s+def|def|class)\b/.test((lines[ln] ?? "").trim());
 }
@@ -451,126 +535,6 @@ function groupByGap(hits: RawFragment[]): HitGroup[] {
     }
   }
   return groups;
-}
-
-function maxConfidence(hits: RawFragment[]): number {
-  return hits.reduce((m, h) => Math.max(m, h.confidence), 0);
-}
-
-function lineEndOffset(content: string, starts: number[], line: number): number {
-  return line + 1 < starts.length ? starts[line + 1] - 1 : content.length;
-}
-
-function unit(
-  content: string,
-  starts: number[],
-  cs: number,
-  ce: number,
-  hits: RawFragment[]
-): RawFragment {
-  const start = Math.max(0, Math.min(cs, content.length));
-  const end = Math.max(start, Math.min(ce, content.length));
-  return {
-    char_start: start,
-    char_end: end,
-    line_start: lineOf(starts, start),
-    line_end: lineOf(starts, Math.max(start, end - 1)),
-    text: content.slice(start, end),
-    confidence: maxConfidence(hits),
-    artifactType: "embedded_prompt",
-  };
-}
-
-function wholeFileUnit(
-  content: string,
-  starts: number[],
-  lines: string[],
-  lang: Lang,
-  hits: RawFragment[],
-  maxChars: number,
-  stripHeader: boolean
-): RawFragment {
-  let start = 0;
-  if (stripHeader && hits.length > 0) {
-    // Never strip past the first prompt (in case the prompt IS the top docstring).
-    start = Math.min(headerEndOffset(content, starts, lines, lang), hits[0].char_start);
-  }
-  if (content.length - start <= maxChars) {
-    return unit(content, starts, start, content.length, hits);
-  }
-  return regionUnit(content, starts, hits, 3, maxChars);
-}
-
-// Offset where real code begins — skips a shebang plus a leading run of comments
-// and a single module docstring, so a file-header comment is not sent to the LLM
-// (it would bias the analysis).
-function headerEndOffset(
-  content: string,
-  starts: number[],
-  lines: string[],
-  lang: Lang
-): number {
-  let ln = (lines[0] ?? "").startsWith("#!") ? 1 : 0;
-  while (ln < lines.length) {
-    const line = lines[ln] ?? "";
-    const t = line.trim();
-    if (t === "") {
-      ln++;
-      continue;
-    }
-    if (lang === "python") {
-      if (t.startsWith("#")) {
-        ln++;
-        continue;
-      }
-      const m = /^(?:[rbuf]{0,2})("""|''')/i.exec(t);
-      if (m) {
-        const quote = m[1];
-        const afterOpen = starts[ln] + line.indexOf(quote) + 3;
-        const close = content.indexOf(quote, afterOpen);
-        if (close === -1) {
-          break;
-        }
-        ln = lineOf(starts, close + 3) + 1;
-        continue;
-      }
-      break;
-    }
-    if (t.startsWith("//")) {
-      ln++;
-      continue;
-    }
-    if (t.startsWith("/*")) {
-      const close = content.indexOf("*/", starts[ln]);
-      if (close === -1) {
-        break;
-      }
-      ln = lineOf(starts, close + 2) + 1;
-      continue;
-    }
-    break;
-  }
-  return ln < starts.length ? starts[ln] : content.length;
-}
-
-function regionUnit(
-  content: string,
-  starts: number[],
-  hits: RawFragment[],
-  contextLines: number,
-  maxChars: number
-): RawFragment {
-  const firstLine = Math.max(0, hits[0].line_start - contextLines);
-  const lastLine = Math.min(
-    starts.length - 1,
-    hits[hits.length - 1].line_end + contextLines
-  );
-  const cs = starts[firstLine];
-  let ce = lineEndOffset(content, starts, lastLine);
-  if (ce - cs > maxChars) {
-    ce = cs + maxChars;
-  }
-  return unit(content, starts, cs, ce, hits);
 }
 
 function pythonBlockUnit(

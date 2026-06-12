@@ -95,10 +95,32 @@ first-balanced-`{...}` fallback; retry once (consent-dialog race). This logic is
 
 ## Deviations from brief
 
-- **§6.2 scanner**: ships a **heuristic** Tier-2 fragment extractor instead of tree-sitter AST for
-  v0.1. Reason: cross-platform `.vsix` packaging risk (native binaries / WASM ABI) on a 48h ship to
-  ~30 mixed-OS student machines outweighs the precision gain on student code. A `TODO(v0.2)` marks
-  the scanner head; real AST extraction is deferred to v0.2.
+- **§6.2 scanner**: v0.1 shipped a **heuristic** Tier-2 fragment extractor instead of tree-sitter
+  AST. Reason: cross-platform `.vsix` packaging risk (native binaries / WASM ABI) on a 48h ship to
+  ~30 mixed-OS student machines outweighed the precision gain. **Resolved in v0.2** (below); the
+  heuristic extractor is retained as the automatic fallback.
+
+### v0.2.0 — tree-sitter AST extraction + Java/C#
+
+Hybrid extractor: parse each candidate file with tree-sitter and classify string literals
+structurally; fall back to the v0.1 heuristics when a grammar can't load or parsing throws.
+
+- **Packaging.** Grammars come from `@vscode/tree-sitter-wasm` (pinned exact `0.3.1`) — Microsoft's
+  prebuilt, ABI-matched WASM for the web-tree-sitter runtime + per-language grammars. The plain
+  `tree-sitter-<lang>` npm packages ship only C sources (would need an emscripten build), so they
+  are not used. `esbuild.js` copies `tree-sitter.wasm` + the 6 grammar files into `dist/wasm/`
+  (`.vscodeignore` doesn't exclude them); they're located at runtime via
+  `context.extensionUri/dist/wasm`. The web-tree-sitter JS glue bundles cleanly into
+  `dist/extension.js` because `Parser.init({locateFile})` always points at our copied `.wasm`.
+  Cost: +~9.5 MB uncompressed (~3.5–4.5 MB packed); the C# grammar (5.1 MB) is the size lever if it
+  ever matters. The runtime is initialized lazily and `dispose()`d on deactivate.
+- **Not a web extension.** Loading WASM from disk needs Node; vscode.dev is unsupported.
+- **Testability.** All extraction logic stays pure (only `Scanner.ts` imports `vscode`); unit tests
+  load the real WASM from `node_modules` via `ast/testWasm.ts`, with `@vscode/tree-sitter-wasm`
+  marked `--external` in the test bundle.
+- **Fragment-id churn.** Single-literal fragments keep inner-content offsets (same id); merged
+  concatenations / message arrays / shifted unit boundaries get new ids → a one-time re-analysis.
+  No `Fragment`/`IndexFileV1` schema change.
 
 ### v0.1.1 — scanner precision + observability + LLM reliability
 After testing on a large YAML-heavy monorepo (Helm charts, Nuxt build output) the heuristic produced
@@ -153,7 +175,8 @@ Heuristic per-string extraction split multi-part prompts and partially captured 
   incremented per revision in the store), and the consent-banner copy are per the user's
   confirmations.
 
-## Open / deferred (v0.2)
+## Open / deferred
 
-Tree-sitter AST extraction; Tier-3 LLM verification; CodeLens / gutter decorations / status bar /
-auto-rescan; multi-catalog selector; languages beyond Python + TS/JS; i18n. (Spec §12.)
+Tier-3 LLM verification; CodeLens / gutter decorations / status bar / auto-rescan; multi-catalog
+selector; languages beyond Python / TS-JS / Java / C# (the `LanguageSpec` seam makes Go, Ruby,
+Kotlin, PHP follow-ups); incremental parsing; i18n. (Spec §12.)

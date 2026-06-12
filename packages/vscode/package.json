@@ -2,7 +2,7 @@
   "name": "prompt-radar",
   "displayName": "Prompt Radar",
   "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, and review the findings on an interactive radar.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "publisher": "vanilson",
   "license": "MIT",
@@ -247,12 +247,21 @@
             "type": "array",
             "order": 1,
             "items": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "python",
+                "typescript",
+                "javascript",
+                "java",
+                "csharp"
+              ]
             },
             "default": [
               "python",
               "typescript",
-              "javascript"
+              "javascript",
+              "java",
+              "csharp"
             ],
             "description": "Languages the scanner extracts fragments from."
           },
@@ -422,7 +431,7 @@
     "watch": "node esbuild.js --watch",
     "compile": "tsc --noEmit",
     "lint": "eslint src",
-    "test:unit": "esbuild $(find src -name '*.test.ts') --bundle --platform=node --format=cjs --outdir=dist/test --external:vscode && node --test \"dist/test/**/*.js\"",
+    "test:unit": "esbuild $(find src -name '*.test.ts') --bundle --platform=node --format=cjs --outdir=dist/test --external:vscode --external:@vscode/tree-sitter-wasm && node --test \"dist/test/**/*.js\"",
     "package": "vsce package"
   },
   "devDependencies": {
@@ -436,6 +445,7 @@
     "typescript-eslint": "^8.19.0"
   },
   "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1",
     "zod": "^4.4.3"
   }
 }

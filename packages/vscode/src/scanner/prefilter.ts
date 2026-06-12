@@ -40,6 +40,14 @@ const PY_IMPORT_RE = new RegExp(`^\\s*(?:from|import)\\s+(?:${SDK_NAMES})\\b`, "
 const JS_IMPORT_RE =
   /\b(?:import|require)\b[^;\n]*['"](?:openai|@anthropic-ai\/sdk|@azure\/openai|@google\/generative-ai|@langchain\/[\w.-]+|langchain|cohere-ai|@mistralai\/[\w.-]+|@google-cloud\/vertexai|groq-sdk|together-ai|ollama|llamaindex)['"]/;
 
+// Java: `import org.springframework.ai...` / `import dev.langchain4j...`
+const JAVA_IMPORT_RE =
+  /^\s*import\s+(?:static\s+)?(?:org\.springframework\.ai|dev\.langchain4j|com\.openai|com\.azure\.ai\.openai|com\.anthropic|com\.google\.cloud\.vertexai)\./im;
+
+// C#: `using Microsoft.SemanticKernel;` / `global using OpenAI;`
+const CS_IMPORT_RE =
+  /^\s*(?:global\s+)?using\s+(?:Microsoft\.SemanticKernel|OpenAI|Azure\.AI\.OpenAI|Anthropic|LLamaSharp|Microsoft\.Extensions\.AI)\b/im;
+
 // Strong content signal usable even without an SDK import (code files). No
 // leading \b so it still matches when glued to an escape (e.g. "\nYou are"),
 // and no article requirement so "You are FreeBot" matches too.
@@ -61,7 +69,12 @@ export function extname(path: string): string {
 }
 
 export function hasSdkImport(content: string): boolean {
-  return PY_IMPORT_RE.test(content) || JS_IMPORT_RE.test(content);
+  return (
+    PY_IMPORT_RE.test(content) ||
+    JS_IMPORT_RE.test(content) ||
+    JAVA_IMPORT_RE.test(content) ||
+    CS_IMPORT_RE.test(content)
+  );
 }
 
 export function prefilter(relPath: string, content: string): PrefilterResult {

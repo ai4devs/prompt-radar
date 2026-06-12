@@ -15,9 +15,28 @@ Prompt Radar scores every prompt across five quality dimensions:
 ## Getting started
 
 1. Open the **Prompt Radar** view in the Activity Bar.
-2. Run **Scan Workspace** — a local, heuristic scan (no LLM calls) that finds prompt fragments in Python/TypeScript/JavaScript code, prompt-shaped YAML/JSON, and dedicated prompt files (`*.prompt`, `*.jinja`, `*.agent.md`, …).
+2. Run **Scan Workspace** — a local scan (no LLM calls) that finds prompt fragments in Python, TypeScript/JavaScript (incl. JSX/TSX), Java, and C# code, prompt-shaped YAML/JSON, and dedicated prompt files (`*.prompt`, `*.jinja`, `*.agent.md`, …).
 3. Click a detected fragment (or run **Analyze All Detected Prompts**) to analyze it. Every LLM call is an explicit user action.
 4. Review each finding in the radar panel — agree/disagree/unsure with an optional rationale, jump to the evidence in code, and add smells the detector missed.
+
+## How scanning works
+
+Scanning is local and LLM-free. A fast prefilter narrows the workspace to files with a real
+signal (an LLM SDK import, a dedicated prompt file, prompt-shaped config, or telltale "You are…"
+content), then a **tree-sitter** parser extracts the actual prompt strings from each candidate. The
+parser understands each language's string forms and structure, so it catches prompts that text
+matching misses and avoids flagging strings in comments:
+
+| Language | Detects |
+|----------|---------|
+| **Python** | f-strings, triple-quoted/raw strings, implicit & `+` concatenation, `{"role","content"}` message dicts, prompt-named assignments, OpenAI/Anthropic/LangChain/LiteLLM call sites, `PromptTemplate` |
+| **JS / TS / JSX / TSX** | template literals (incl. tagged), `[{role, content}]` message arrays, prompt-named `const`/field/property, prompt-ish JSX attributes, `chat.completions.create` & friends |
+| **Java** | text blocks (`"""…"""`), Spring AI `ChatClient` (`.prompt/.system/.user`), LangChain4j `@SystemMessage`/`@UserMessage`, `PromptTemplate` |
+| **C#** | verbatim `@"…"`, raw `"""…"""`, and interpolated `$"…"` strings, Semantic Kernel (`InvokePromptAsync`, `CreateFunctionFromPrompt`), `ChatHistory.Add*Message`, OpenAI/Azure chat-message types |
+
+If a grammar can't load on your machine, the scanner automatically falls back to a precise
+regex/heuristic extractor — scanning never fails, it just gets a little less accurate. Grammars
+ship with the extension as portable WebAssembly (no native binaries).
 
 ## LLM providers
 
@@ -45,7 +64,7 @@ Prompt Radar scores every prompt across five quality dimensions:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `promptRadar.provider` | `vscodeLM` | LLM provider (`vscodeLM`, `openaiCompatible`, or `azureOpenAI`) |
-| `promptRadar.scan.languages` | `python, typescript, javascript` | Languages the scanner extracts fragments from |
+| `promptRadar.scan.languages` | `python, typescript, javascript, java, csharp` | Languages the scanner extracts fragments from |
 | `promptRadar.scan.minConfidence` | `0.6` | Minimum detection confidence for a fragment to be kept |
 | `promptRadar.scan.codeScope` | `auto` | How prompts in source code are grouped before analysis |
 | `promptRadar.maxConcurrent` | `2` | Concurrency limit for batch analysis |

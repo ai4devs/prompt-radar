@@ -1,13 +1,15 @@
+import * as path from "node:path";
 import * as vscode from "vscode";
 import type { Fragment } from "../model/types";
 import type { Logger } from "../util/logger";
 import { fragmentId, sha256 } from "../util/hash";
+import { type CodeScope, type RawFragment } from "./extractor";
 import {
-  extractCodeUnits,
-  extractFragments,
-  type CodeScope,
-  type RawFragment,
-} from "./extractor";
+  getSharedRuntime,
+  type AstLangId,
+  type AstRuntime,
+} from "./ast/runtime";
+import { extractForFile, type ExtractPath } from "./pipeline";
 import { prefilter } from "./prefilter";
 
 // Walks the workspace (Tier-1 prefilter + Tier-2 heuristic extraction) and
@@ -19,6 +21,18 @@ const LANGUAGE_EXTS: Record<string, string[]> = {
   python: ["py", "pyi"],
   typescript: ["ts", "tsx"],
   javascript: ["js", "jsx", "mjs", "cjs"],
+  java: ["java"],
+  csharp: ["cs"],
+};
+
+// Which tree-sitter grammars a configured language needs (.jsx/.tsx use the tsx
+// grammar, which is a superset that parses both with and without JSX).
+const LANGUAGE_AST: Record<string, AstLangId[]> = {
+  python: ["python"],
+  typescript: ["typescript", "tsx"],
+  javascript: ["javascript", "tsx"],
+  java: ["java"],
+  csharp: ["csharp"],
 };
 
 // Always excluded (generated/build/vendor output), unioned with user excludes +
@@ -61,7 +75,15 @@ export interface ScanResult {
 }
 
 export class Scanner {
-  constructor(private readonly logger: Logger) {}
+  private readonly wasmDir: string;
+
+  constructor(
+    private readonly logger: Logger,
+    wasmDir?: string
+  ) {
+    // Bundled output lives in dist/; the wasm files are copied to dist/wasm/.
+    this.wasmDir = wasmDir ?? path.join(__dirname, "wasm");
+  }
 
   async scanWorkspace(
     progress?: vscode.Progress<{ message?: string; increment?: number }>,
@@ -101,6 +123,8 @@ export class Scanner {
     );
     this.logger.verbose(`exclude: ${excludeGlob ?? "(none)"}`);
 
+    const runtime = await this.resolveRuntime(languages);
+
     const seen = new Set<string>();
     const uris: vscode.Uri[] = [];
     for (const include of includeGlobs) {
@@ -126,6 +150,11 @@ export class Scanner {
     const fragments: Fragment[] = [];
     let filesScanned = 0;
     let suspectFiles = 0;
+    const pathCounts: Record<ExtractPath, number> = {
+      ast: 0,
+      heuristic: 0,
+      standalone: 0,
+    };
     const total = uris.length;
 
     for (let idx = 0; idx < uris.length; idx++) {
@@ -138,19 +167,22 @@ export class Scanner {
           increment: total ? (25 / total) * 100 : 0,
         });
       }
-      const result = await this.scanUri(uri, rel, minConfidence, codeScope);
+      const result = await this.scanUri(uri, rel, minConfidence, codeScope, runtime);
       if (result) {
         filesScanned++;
-        if (result.length > 0) {
+        if (result.fragments.length > 0) {
           suspectFiles++;
-          fragments.push(...result);
+          fragments.push(...result.fragments);
+          pathCounts[result.path]++;
         }
       }
     }
 
     this.logger.info(
-      `Scan complete · ${fragments.length} fragment(s) from ${suspectFiles} file(s) · ` +
-        `${total} candidates read · ${Date.now() - startedMs}ms`
+      `Scan complete · ${fragments.length} fragment(s) from ${suspectFiles} file(s) ` +
+        `(${pathCounts.ast} via AST, ${pathCounts.heuristic} via heuristics, ` +
+        `${pathCounts.standalone} standalone) · ${total} candidates read · ` +
+        `${Date.now() - startedMs}ms`
     );
     return { fragments, filesScanned, capped };
   }
@@ -160,15 +192,31 @@ export class Scanner {
     const cfg = vscode.workspace.getConfiguration("promptRadar");
     const minConfidence = cfg.get<number>("scan.minConfidence", 0.6);
     const codeScope = cfg.get<CodeScope>("scan.codeScope", "auto");
-    return (await this.scanUri(uri, rel, minConfidence, codeScope)) ?? [];
+    const languages = cfg.get<string[]>("scan.languages", []);
+    const runtime = await this.resolveRuntime(languages);
+    const result = await this.scanUri(uri, rel, minConfidence, codeScope, runtime);
+    return result?.fragments ?? [];
+  }
+
+  private async resolveRuntime(
+    languages: string[]
+  ): Promise<AstRuntime | undefined> {
+    const astLangs = [
+      ...new Set(languages.flatMap((l) => LANGUAGE_AST[l] ?? [])),
+    ];
+    if (astLangs.length === 0) {
+      return undefined;
+    }
+    return getSharedRuntime(this.wasmDir, astLangs, (m) => this.logger.verbose(m));
   }
 
   private async scanUri(
     uri: vscode.Uri,
     rel: string,
     minConfidence: number,
-    codeScope: CodeScope
-  ): Promise<Fragment[] | undefined> {
+    codeScope: CodeScope,
+    runtime: AstRuntime | undefined
+  ): Promise<{ fragments: Fragment[]; path: ExtractPath } | undefined> {
     try {
       const stat = await vscode.workspace.fs.stat(uri);
       if (stat.size > MAX_FILE_BYTES) {
@@ -187,23 +235,21 @@ export class Scanner {
       if (!pre.suspect) {
         return undefined;
       }
-      // Standalone prompt files and prompt-shaped config keep their dedicated
-      // extraction; source code uses code-unit extraction (whole-file / per
-      // enclosing function / granular) per promptRadar.scan.codeScope.
-      const raw =
-        pre.standalone || pre.configPrompt
-          ? extractFragments(rel, content, pre, minConfidence)
-          : extractCodeUnits(rel, content, pre, {
-              minConfidence,
-              scope: codeScope,
-              maxChars: MAX_ARTIFACT_CHARS,
-            });
+      // The hybrid pipeline prefers the tree-sitter AST extractor and falls back
+      // to the heuristic extractor; standalone/config files stay whole-file.
+      const { fragments: raw, path: extractPath } = extractForFile(
+        rel,
+        content,
+        pre,
+        { minConfidence, scope: codeScope, maxChars: MAX_ARTIFACT_CHARS },
+        runtime
+      );
       if (raw.length > 0) {
         this.logger.verbose(
-          `${rel}: ${raw.length} unit(s) [${pre.reasons.join(", ")}]`
+          `${rel}: ${raw.length} unit(s) via ${extractPath} [${pre.reasons.join(", ")}]`
         );
       }
-      return raw.map((r) => this.toFragment(rel, r));
+      return { fragments: raw.map((r) => this.toFragment(rel, r)), path: extractPath };
     } catch (err) {
       this.logger.verbose(
         `skip ${rel}: ${err instanceof Error ? err.message : String(err)}`
