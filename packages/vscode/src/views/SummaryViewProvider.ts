@@ -8,7 +8,7 @@ import type { PromptIndexStore } from "../model/PromptIndexStore";
 import type { ResponseLogStore } from "../model/ResponseLogStore";
 import { computeAggregate, type Aggregate } from "./aggregate";
 
-const SETTINGS_QUERY = "@ext:vanilson.prompt-radar";
+const SETTINGS_QUERY = "@ext:ai4devs.prompt-radar";
 
 const SHORT_LABELS: Record<Dimension, string> = {
   formatting: "Fmt",

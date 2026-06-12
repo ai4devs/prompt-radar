@@ -3,8 +3,9 @@
   "displayName": "Prompt Radar",
   "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, and review the findings on an interactive radar.",
   "version": "0.2.0",
+  "icon": "resources/icons/icon.png",
   "private": true,
-  "publisher": "vanilson",
+  "publisher": "ai4devs",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -18,6 +19,18 @@
     "Linters",
     "Other"
   ],
+  "keywords": [
+    "prompt",
+    "prompt engineering",
+    "llm",
+    "ai",
+    "openai",
+    "anthropic"
+  ],
+  "galleryBanner": {
+    "color": "#0f172a",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onView:promptRadar.prompts",
     "onView:promptRadar.summary"
