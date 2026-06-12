@@ -24,7 +24,8 @@ Prompt Radar turns a selection-only prompt linter into a workspace-scale prompt-
   Agree/Disagree/Unsure responses + rationale, clickable evidence that jumps to the code, and a
   "+ Add missed smell" form.
 - **Persistence:** the prompt index and your review responses persist under `.prompt-radar/`
-  (auto-saved, debounced) and survive reloads.
+  (auto-saved, debounced) and survive reloads. The directory is self-ignoring — a `.gitignore`
+  is written on creation so the cached prompt text is never committed or shared by accident.
 - **Opt-in feedback telemetry (off by default):** `promptRadar.telemetry.enabled` shares each
   feedback action (agree/disagree/unsure on a detected smell, or a reported missed smell) together
   with the analyzed prompt text, the detected smells, and the model used — anonymized, debounced,

@@ -23,6 +23,24 @@ export async function readJsonFile<T>(uri: vscode.Uri): Promise<T | undefined> {
 export async function writeJsonFile(uri: vscode.Uri, data: unknown): Promise<void> {
   const dir = vscode.Uri.joinPath(uri, "..");
   await vscode.workspace.fs.createDirectory(dir);
+  await ensureGitignore(dir);
   const text = JSON.stringify(data, null, 2);
   await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(text));
+}
+
+// The cache holds analyzed prompt text and review responses in plaintext.
+// Drop a self-ignoring `.gitignore` (`*` ignores the whole dir, including this
+// file) the first time the directory is created, so the cache can't be
+// accidentally committed and shared with anyone who opens the folder. A
+// pre-existing `.gitignore` is left untouched.
+async function ensureGitignore(dir: vscode.Uri): Promise<void> {
+  const gitignore = vscode.Uri.joinPath(dir, ".gitignore");
+  try {
+    await vscode.workspace.fs.stat(gitignore);
+    return; // already present — don't clobber a user's own rules
+  } catch {
+    // missing — fall through and create it
+  }
+  const body = "# Prompt Radar analysis cache — do not commit.\n*\n";
+  await vscode.workspace.fs.writeFile(gitignore, new TextEncoder().encode(body));
 }
