@@ -121,20 +121,40 @@
             "order": 1,
             "enum": [
               "vscodeLM",
+              "openaiCompatible",
               "azureOpenAI"
             ],
             "enumDescriptions": [
               "Use the VS Code Language Model API (Copilot etc.)",
+              "Use any OpenAI-compatible endpoint with your own key (BYOK): OpenAI, DeepSeek, Gemini, Anthropic, Mistral, Groq, OpenRouter, xAI, Ollama/LM Studio, …",
               "Use Azure OpenAI with your own key (BYOK)"
             ],
             "default": "vscodeLM",
-            "markdownDescription": "Which LLM provider to use. `vscodeLM` uses the VS Code Language Model API (Copilot). `azureOpenAI` uses the endpoint/deployment below plus the API key set via **[Configure API Key](command:promptRadar.configureApiKey)**."
+            "markdownDescription": "Which LLM provider to use. `vscodeLM` uses the VS Code Language Model API (Copilot). `openaiCompatible` uses any OpenAI-compatible `/chat/completions` endpoint (base URL + model below). `azureOpenAI` uses the endpoint/deployment below. BYOK providers take the API key set via **[Configure API Key](command:promptRadar.configureApiKey)**."
+          }
+        }
+      },
+      {
+        "title": "OpenAI-Compatible (BYOK)",
+        "order": 2,
+        "properties": {
+          "promptRadar.openai.baseUrl": {
+            "type": "string",
+            "order": 1,
+            "default": "",
+            "markdownDescription": "Base URL of an OpenAI-compatible API, e.g. `https://api.openai.com/v1`. Requests go to `{baseUrl}/chat/completions` (trailing slashes are stripped). Works with OpenAI, DeepSeek, Gemini (AI Studio), Anthropic, Mistral, Groq, OpenRouter, xAI, and local Ollama/LM Studio. See the README for known base URLs.\n\n🔑 The API key is stored securely in VS Code Secret Storage (never in settings.json). Set or update it with **[Configure API Key](command:promptRadar.configureApiKey)**."
+          },
+          "promptRadar.openai.model": {
+            "type": "string",
+            "order": 2,
+            "default": "",
+            "markdownDescription": "Model id sent to the endpoint, e.g. `gpt-4o`, `deepseek-chat`, `gemini-2.5-pro`."
           }
         }
       },
       {
         "title": "Azure OpenAI (BYOK)",
-        "order": 2,
+        "order": 3,
         "properties": {
           "promptRadar.azure.endpoint": {
             "type": "string",
@@ -158,7 +178,7 @@
       },
       {
         "title": "VS Code Language Model (fallback)",
-        "order": 3,
+        "order": 4,
         "properties": {
           "promptRadar.model": {
             "type": "string",

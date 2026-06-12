@@ -15,8 +15,9 @@ export async function configureApiKey(
   secrets: vscode.SecretStorage
 ): Promise<void> {
   const key = await vscode.window.showInputBox({
-    title: "Prompt Radar: Azure OpenAI API Key",
-    prompt: "Enter your Azure OpenAI API key. It is stored securely in VS Code SecretStorage.",
+    title: "Prompt Radar: API Key",
+    prompt:
+      "Enter your API key for the selected BYOK provider (OpenAI-compatible or Azure OpenAI). It is stored securely in VS Code SecretStorage.",
     password: true,
     ignoreFocusOut: true,
   });

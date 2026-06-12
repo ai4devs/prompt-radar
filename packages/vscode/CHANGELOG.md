@@ -16,8 +16,10 @@ Prompt Radar turns a selection-only prompt linter into a workspace-scale prompt-
   v0.2.)
 - **Detector** with a bundled v1.0 prompt and seed catalog (5 dimensions: formatting, reliability,
   efficiency, security, safety), run at temperature 0 with deterministic in-code rescoring.
-- **LLM provider abstraction:** Azure OpenAI BYOK (key in SecretStorage) with automatic fallback to
-  the VS Code Language Model API; a single typed error surface with an actionable side-panel banner.
+- **LLM provider abstraction:** BYOK via any OpenAI-compatible `/chat/completions` endpoint
+  (`openaiCompatible` — OpenAI, DeepSeek, Gemini, Anthropic, Mistral, Groq, OpenRouter, xAI,
+  Ollama/LM Studio, …) or Azure OpenAI, with the key in SecretStorage and automatic fallback to the
+  VS Code Language Model API; a single typed error surface with an actionable side-panel banner.
 - **Radar webview:** score + radar chart, natural-language summary, smells grouped by dimension with
   Agree/Disagree/Unsure responses + rationale, clickable evidence that jumps to the code, and a
   "+ Add missed smell" form.

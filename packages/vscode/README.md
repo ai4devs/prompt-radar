@@ -22,13 +22,29 @@ Prompt Radar scores every prompt across five quality dimensions:
 ## LLM providers
 
 - **VS Code Language Model (default):** uses the VS Code Language Model API (e.g. GitHub Copilot). Optionally pin a model family via `promptRadar.model`.
+- **OpenAI-compatible (BYOK):** set `promptRadar.provider` to `openaiCompatible`, fill in `promptRadar.openai.baseUrl` and `promptRadar.openai.model`, and store your API key with **Prompt Radar: Configure API Key**. Requests go to `{baseUrl}/chat/completions` with `Authorization: Bearer <key>`. Works with any OpenAI-compatible endpoint:
+
+  | Provider | `promptRadar.openai.baseUrl` |
+  |----------|------------------------------|
+  | OpenAI | `https://api.openai.com/v1` |
+  | DeepSeek | `https://api.deepseek.com` |
+  | Gemini (AI Studio) | `https://generativelanguage.googleapis.com/v1beta/openai` |
+  | Anthropic | `https://api.anthropic.com/v1` |
+  | Mistral | `https://api.mistral.ai/v1` |
+  | Groq | `https://api.groq.com/openai/v1` |
+  | OpenRouter | `https://openrouter.ai/api/v1` |
+  | xAI | `https://api.x.ai/v1` |
+  | Ollama (local) | `http://localhost:11434/v1` |
+  | LM Studio (local) | `http://localhost:1234/v1` |
+
+  Set `promptRadar.openai.model` to a model the endpoint serves, e.g. `gpt-4o`, `deepseek-chat`, or `gemini-2.5-pro`. The key lives in VS Code Secret Storage — never in `settings.json`.
 - **Azure OpenAI (BYOK):** set `promptRadar.provider` to `azureOpenAI`, fill in `promptRadar.azure.endpoint` / `deployment` / `apiVersion`, and store your API key with **Prompt Radar: Configure API Key**. The key lives in VS Code Secret Storage — never in `settings.json`.
 
 ## Key settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `promptRadar.provider` | `vscodeLM` | LLM provider (`vscodeLM` or `azureOpenAI`) |
+| `promptRadar.provider` | `vscodeLM` | LLM provider (`vscodeLM`, `openaiCompatible`, or `azureOpenAI`) |
 | `promptRadar.scan.languages` | `python, typescript, javascript` | Languages the scanner extracts fragments from |
 | `promptRadar.scan.minConfidence` | `0.6` | Minimum detection confidence for a fragment to be kept |
 | `promptRadar.scan.codeScope` | `auto` | How prompts in source code are grouped before analysis |
