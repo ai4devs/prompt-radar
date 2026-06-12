@@ -2,7 +2,7 @@
   "name": "prompt-radar",
   "displayName": "Prompt Radar",
   "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, and review the findings on an interactive radar.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "icon": "resources/icons/icon.png",
   "private": true,
   "publisher": "ai4dev",
@@ -28,7 +28,7 @@
     "anthropic"
   ],
   "galleryBanner": {
-    "color": "#0f172a",
+    "color": "#07111f",
     "theme": "dark"
   },
   "activationEvents": [
@@ -100,8 +100,8 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "promptRadar.clearSessionLog",
-        "title": "Prompt Radar: Clear Session Log",
+        "command": "promptRadar.clearResponses",
+        "title": "Prompt Radar: Clear Review Responses",
         "icon": "$(trash)"
       },
       {
@@ -392,7 +392,7 @@
           "group": "1_config@3"
         },
         {
-          "command": "promptRadar.clearSessionLog",
+          "command": "promptRadar.clearResponses",
           "when": "view == promptRadar.prompts",
           "group": "1_config@4"
         }

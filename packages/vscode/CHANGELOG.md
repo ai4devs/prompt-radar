@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+- New gallery icon matching the ai4dev / Prompt Radar brand logo.
+- Renamed the command **Clear Session Log** → **Clear Review Responses** (`promptRadar.clearResponses`),
+  reflecting what it does — clearing your agree/disagree/unsure responses and reported missed smells.
+  The old "session log" name was a leftover from removed research instrumentation.
+
 ## 0.2.0
 
 Much more robust embedded-prompt detection.
