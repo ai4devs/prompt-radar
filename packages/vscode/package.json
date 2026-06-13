@@ -100,11 +100,6 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "promptRadar.clearResponses",
-        "title": "Prompt Radar: Clear Review Responses",
-        "icon": "$(trash)"
-      },
-      {
         "command": "promptRadar.configureApiKey",
         "title": "Prompt Radar: Configure API Key",
         "icon": "$(key)"
@@ -390,11 +385,6 @@
           "command": "promptRadar.clearWorkspace",
           "when": "view == promptRadar.prompts",
           "group": "1_config@3"
-        },
-        {
-          "command": "promptRadar.clearResponses",
-          "when": "view == promptRadar.prompts",
-          "group": "1_config@4"
         }
       ],
       "view/item/context": [

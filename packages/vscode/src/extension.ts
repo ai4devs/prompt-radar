@@ -130,18 +130,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
 
-    vscode.commands.registerCommand("promptRadar.clearResponses", async () => {
-      const pick = await vscode.window.showWarningMessage(
-        "Clear all Prompt Radar review responses (agree/disagree/unsure and reported missed smells)?",
-        { modal: true },
-        "Clear"
-      );
-      if (pick === "Clear") {
-        responses.clear();
-        vscode.window.showInformationMessage("Prompt Radar: review responses cleared.");
-      }
-    }),
-
     vscode.commands.registerCommand("promptRadar.scanWorkspace", () =>
       scanWorkspace(logger, index, wasmDir)
     ),
