@@ -2,7 +2,7 @@
   "name": "prompt-radar",
   "displayName": "Prompt Radar",
   "description": "Scan a workspace for prompt fragments, analyze them for prompt smells with an LLM, and review the findings on an interactive radar.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "icon": "resources/icons/icon.png",
   "private": true,
   "publisher": "ai4dev",

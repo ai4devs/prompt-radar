@@ -1,9 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+- Removed the review-responses clear command and a dead session-export scan exclude, the last leftovers of the removed research instrumentation.
+
 ## 0.2.1
 
 - New gallery icon matching the ai4dev / Prompt Radar brand logo.
-- Removed the **Clear Session Log** command — a leftover from the removed research instrumentation.
+- Renamed the **Clear Session Log** command to **Clear Review Responses**, a leftover name from the removed research instrumentation.
 
 ## 0.2.0
 
